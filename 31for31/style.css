@@ -1,0 +1,17 @@
+body {
+    color: red;
+    background-color: black;
+    align-content: center;
+}
+
+img in body {
+    display flex: flex;
+}
+img {
+    width: 10em;
+    height: 10em;
+}
+
+h1 {
+    text-align: center;
+}
