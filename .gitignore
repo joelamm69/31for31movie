@@ -1,0 +1,6 @@
+# Real TMDB key — copy tmdb-config.example.js to this and fill in your own.
+# Kept out of git because this repo is public (same rule Config.swift in the
+# app repo follows for its own copy of this key).
+assets/js/tmdb-config.js
+
+.DS_Store

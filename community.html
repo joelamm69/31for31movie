@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Community Lists — 31 for 31</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <header class="site-header">
+        <a href="index.html" class="brand">31 for 31</a>
+        <nav class="site-nav">
+            <a href="index.html">Home</a>
+            <a href="gallery.html">Gallery</a>
+            <a href="blog/index.html">Blog</a>
+            <a href="lists.html">My Lists</a>
+            <a href="community.html">Community</a>
+        </nav>
+        <div class="nav-auth" id="nav-auth"></div>
+    </header>
+
+    <main>
+        <div class="section-heading">
+            <h1>Community Lists</h1>
+        </div>
+        <div class="field" style="max-width:360px">
+            <input type="search" id="community-search" placeholder="Search lists by name">
+        </div>
+        <div id="community-container" class="lists-grid" style="margin-top:1.25rem"></div>
+    </main>
+
+    <footer class="site-footer">
+        &copy; 2026 31 for 31. Made for horror fans.
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/supabase-client.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/tmdb-config.js" onerror="console.warn('tmdb-config.js not set up — poster previews disabled.')"></script>
+    <script src="assets/js/tmdb.js"></script>
+    <script src="assets/js/community.js"></script>
+</body>
+</html>

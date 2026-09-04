@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log In — 31 for 31</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <header class="site-header">
+        <a href="index.html" class="brand">31 for 31</a>
+        <nav class="site-nav">
+            <a href="index.html">Home</a>
+            <a href="gallery.html">Gallery</a>
+            <a href="blog/index.html">Blog</a>
+            <a href="lists.html">My Lists</a>
+            <a href="community.html">Community</a>
+        </nav>
+        <div class="nav-auth" id="nav-auth"></div>
+    </header>
+
+    <main>
+        <div class="form-card">
+            <h2 id="form-title">Log In</h2>
+            <div id="alert-box"></div>
+
+            <form id="auth-form">
+                <div class="field" id="display-name-field" hidden>
+                    <label for="display-name">Display Name</label>
+                    <input type="text" id="display-name" autocomplete="nickname">
+                </div>
+                <div class="field">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" required autocomplete="email">
+                </div>
+                <div class="field">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" required autocomplete="current-password" minlength="6">
+                </div>
+                <button type="submit" class="btn btn-primary" id="submit-btn" style="width:100%">Log In</button>
+            </form>
+
+            <p style="text-align:center;margin-top:1.25rem;font-size:0.9rem">
+                <span id="toggle-prompt">Don't have an account?</span>
+                <a href="#" id="toggle-mode">Sign Up</a>
+            </p>
+        </div>
+    </main>
+
+    <footer class="site-footer">
+        &copy; 2026 31 for 31. Made for horror fans.
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/supabase-client.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script>
+        let mode = "login"; // or "signup"
+
+        function nextUrl() {
+            const params = new URLSearchParams(location.search);
+            return params.get("next") || "lists.html";
+        }
+
+        function setMode(newMode) {
+            mode = newMode;
+            const isSignup = mode === "signup";
+            document.getElementById("form-title").textContent = isSignup ? "Sign Up" : "Log In";
+            document.getElementById("submit-btn").textContent = isSignup ? "Sign Up" : "Log In";
+            document.getElementById("display-name-field").hidden = !isSignup;
+            document.getElementById("toggle-prompt").textContent = isSignup ? "Already have an account?" : "Don't have an account?";
+            document.getElementById("toggle-mode").textContent = isSignup ? "Log In" : "Sign Up";
+            document.getElementById("alert-box").innerHTML = "";
+        }
+
+        document.getElementById("toggle-mode").addEventListener("click", (e) => {
+            e.preventDefault();
+            setMode(mode === "signup" ? "login" : "signup");
+        });
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            const user = await currentUser();
+            if (user) location.href = nextUrl();
+        });
+
+        document.getElementById("auth-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const email = document.getElementById("email").value.trim();
+            const password = document.getElementById("password").value;
+            const displayName = document.getElementById("display-name").value.trim();
+            const alertBox = document.getElementById("alert-box");
+            const submitBtn = document.getElementById("submit-btn");
+
+            alertBox.innerHTML = "";
+            submitBtn.disabled = true;
+
+            try {
+                if (mode === "signup") {
+                    const { data, error } = await window.sb.auth.signUp({
+                        email,
+                        password,
+                        options: { data: { display_name: displayName } },
+                    });
+                    if (error) throw error;
+                    if (data.session) {
+                        location.href = nextUrl();
+                    } else {
+                        alertBox.innerHTML = `<div class="alert alert-info">Check your email to confirm your account, then log in.</div>`;
+                        setMode("login");
+                    }
+                } else {
+                    const { error } = await window.sb.auth.signInWithPassword({ email, password });
+                    if (error) throw error;
+                    location.href = nextUrl();
+                }
+            } catch (err) {
+                alertBox.innerHTML = `<div class="alert alert-error">${err.message || "Something went wrong. Please try again."}</div>`;
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
