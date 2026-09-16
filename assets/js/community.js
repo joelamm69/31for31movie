@@ -1,5 +1,10 @@
 // Powers community.html: browse lists published from lists.html (the
-// `movie_lists` table), mirroring CommunityView.swift in the app.
+// `movie_lists` table), mirroring CommunityView.swift / CommunityListDetailView.swift
+// in the app — including clicking into a list to see every movie on it.
+
+let allLists = [];
+let openRecordId = null;
+const movieCache = new Map(); // record id -> full Movie[] (fetched on first expand)
 
 async function fetchPublicLists() {
     const { data, error } = await window.sb
@@ -29,23 +34,74 @@ function relativeTime(iso) {
     return `${days}d ago`;
 }
 
-async function renderCommunityCard(record) {
-    const previewIds = (record.movie_ids || []).slice(0, 4);
-    const movies = await tmdbFetchMovies(previewIds);
-    const posters = movies
+function posterPreviewsHtml(movies) {
+    return movies
+        .slice(0, 4)
         .map((m) => {
             const url = tmdbPosterUrl(m.poster_path);
             return url ? `<img src="${url}" alt="" style="width:36px;height:54px;object-fit:cover;border-radius:4px;border:1px solid var(--border)">` : "";
         })
         .join("");
+}
 
+function movieDetailRowHtml(movie) {
+    const poster = tmdbPosterUrl(movie.poster_path);
+    const year = movie.release_date ? movie.release_date.slice(0, 4) : "N/A";
     return `
-        <div class="card">
-            <h3 style="margin-bottom:0.25rem">${escapeHtml(record.list_name)}</h3>
-            <div class="count" style="color:var(--accent)">${(record.movie_ids || []).length} Horror Movies · ${relativeTime(record.created_at)}</div>
-            ${posters ? `<div style="display:flex;gap:6px;margin-top:0.6rem">${posters}</div>` : ""}
+        <div class="movie-row">
+            ${poster ? `<img src="${poster}" alt="">` : `<div style="width:46px;height:69px;border-radius:6px;background:var(--bg-raised);flex-shrink:0"></div>`}
+            <div class="movie-meta">
+                <div class="title">${escapeHtml(movie.title)}</div>
+                <div class="year">${year}</div>
+            </div>
         </div>
     `;
+}
+
+function communityCardHtml(record, previewMovies) {
+    const isOpen = record.id === openRecordId;
+    const cached = movieCache.get(record.id);
+
+    let detailHtml = "";
+    if (isOpen) {
+        if (!cached) {
+            detailHtml = `<div class="movie-rows" style="margin-top:0.9rem;border-top:1px solid var(--border);padding-top:0.9rem"><p style="font-size:0.85rem">Loading movies...</p></div>`;
+        } else if (cached.length === 0) {
+            detailHtml = `<div class="movie-rows" style="margin-top:0.9rem;border-top:1px solid var(--border);padding-top:0.9rem"><p style="font-size:0.85rem">${tmdbConfigured() ? "Couldn't load movies for this list." : "Movie details need a TMDB API key — see assets/js/tmdb-config.example.js."}</p></div>`;
+        } else {
+            detailHtml = `<div class="movie-rows" style="margin-top:0.9rem;border-top:1px solid var(--border);padding-top:0.9rem">${cached.map(movieDetailRowHtml).join("")}</div>`;
+        }
+    }
+
+    return `
+        <div class="card" data-list-id="${record.id}">
+            <div style="cursor:pointer" data-action="toggle-community" data-list-id="${record.id}">
+                <h3 style="margin-bottom:0.25rem">${escapeHtml(record.list_name)}</h3>
+                <div class="count" style="color:var(--accent)">${(record.movie_ids || []).length} Horror Movies · ${relativeTime(record.created_at)}</div>
+                ${!isOpen && previewMovies.length ? `<div style="display:flex;gap:6px;margin-top:0.6rem">${posterPreviewsHtml(previewMovies)}</div>` : ""}
+                <button class="btn btn-sm btn-ghost" style="margin-top:0.6rem" data-action="toggle-community" data-list-id="${record.id}">${isOpen ? "Hide Movies" : "View Movies"}</button>
+            </div>
+            ${detailHtml}
+        </div>
+    `;
+}
+
+async function renderAll(container, lists) {
+    // Fetch just enough (first 4) for the collapsed-state poster previews.
+    const previews = await Promise.all(lists.map((r) => tmdbFetchMovies((r.movie_ids || []).slice(0, 4))));
+    container.innerHTML = lists.map((r, i) => communityCardHtml(r, previews[i])).join("");
+}
+
+async function toggleRecord(container, lists, recordId) {
+    openRecordId = openRecordId === recordId ? null : recordId;
+    await renderAll(container, lists);
+
+    if (openRecordId && !movieCache.has(openRecordId)) {
+        const record = lists.find((r) => r.id === openRecordId);
+        const movies = await tmdbFetchMovies(record?.movie_ids || []);
+        movieCache.set(openRecordId, movies);
+        if (openRecordId === record?.id) await renderAll(container, lists);
+    }
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -53,26 +109,31 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!container) return;
 
     container.innerHTML = `<p>Loading community lists...</p>`;
-    const lists = await fetchPublicLists();
+    allLists = await fetchPublicLists();
 
-    if (lists.length === 0) {
+    if (allLists.length === 0) {
         container.innerHTML = `<div class="empty-state">No shared lists yet. Publish one from <a href="lists.html">My Lists</a> to be the first!</div>`;
         return;
     }
 
-    const cards = await Promise.all(lists.map(renderCommunityCard));
-    container.innerHTML = cards.join("");
+    let visibleLists = allLists;
+    await renderAll(container, visibleLists);
+
+    container.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-action='toggle-community']");
+        if (!btn) return;
+        toggleRecord(container, visibleLists, btn.dataset.listId);
+    });
 
     const search = document.getElementById("community-search");
-    search?.addEventListener("input", () => {
+    search?.addEventListener("input", async () => {
         const q = search.value.trim().toLowerCase();
-        const filtered = q ? lists.filter((l) => l.list_name.toLowerCase().includes(q)) : lists;
-        if (filtered.length === 0) {
+        visibleLists = q ? allLists.filter((l) => l.list_name.toLowerCase().includes(q)) : allLists;
+        openRecordId = null;
+        if (visibleLists.length === 0) {
             container.innerHTML = `<div class="empty-state">No lists match "${escapeHtml(search.value)}"</div>`;
             return;
         }
-        Promise.all(filtered.map(renderCommunityCard)).then((c) => {
-            container.innerHTML = c.join("");
-        });
+        await renderAll(container, visibleLists);
     });
 });
