@@ -12,11 +12,24 @@ function movieMatchesAllowedGenres(movie) {
     return ids.some((id) => ALLOWED_GENRE_IDS.has(id));
 }
 
+// Throws on a bad response instead of swallowing it, so callers can show the
+// caller why zero results came back (bad key, rate limit, etc.) rather than
+// a silent "No matches" that looks identical to a genuinely empty search.
 async function tmdbSearchHorrorMovies(query) {
     if (!tmdbConfigured() || !query.trim()) return [];
     const url = `${TMDB_BASE}/search/movie?api_key=${window.TMDB_API_KEY}&query=${encodeURIComponent(query)}`;
     const res = await fetch(url);
-    if (!res.ok) return [];
+    if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try {
+            const body = await res.json();
+            if (body?.status_message) detail = body.status_message;
+        } catch {
+            // response wasn't JSON — stick with the HTTP status
+        }
+        console.error("TMDB search failed:", detail);
+        throw new Error(detail);
+    }
     const json = await res.json();
     return (json.results || []).filter(movieMatchesAllowedGenres);
 }
