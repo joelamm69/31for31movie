@@ -274,7 +274,13 @@ document.addEventListener("DOMContentLoaded", async () => {
                     return;
                 }
                 resultsEl.innerHTML = `<p style="font-size:0.82rem">Searching...</p>`;
-                const movies = await tmdbSearchHorrorMovies(query);
+                let movies;
+                try {
+                    movies = await tmdbSearchHorrorMovies(query);
+                } catch (err) {
+                    resultsEl.innerHTML = `<div class="alert alert-error" style="margin:0">TMDB search failed: ${escapeHtml(err.message)}. Double check assets/js/tmdb-config.js has a valid TMDB API key (v3 auth), not the Read Access Token.</div>`;
+                    return;
+                }
                 resultsEl.innerHTML = movies.length
                     ? movies
                           .slice(0, 8)
