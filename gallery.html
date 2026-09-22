@@ -7,8 +7,9 @@
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
+    <div class="vhs-overlay"></div>
     <header class="site-header">
-        <a href="index.html" class="brand">31 for 31</a>
+        <a href="index.html" class="brand"><span class="b1">31</span><span class="b2">FOR</span><span class="b3">31</span></a>
         <nav class="site-nav">
             <a href="index.html">Home</a>
             <a href="lists.html">My Lists</a>
@@ -22,39 +23,7 @@
             <h1>31 for 31: 2025</h1>
         </div>
         <p>This year's watchlist, poster by poster.</p>
-        <div class="poster-grid">
-            <img src="31for31/Nope.JPG" alt="Nope" loading="lazy">
-            <img src="31for31/What we do in the shadows.JPG" alt="What We Do in the Shadows" loading="lazy">
-            <img src="31for31/THEMONKEY.JPG" alt="The Monkey" loading="lazy">
-            <img src="31for31/A quiet Place.JPG" alt="A Quiet Place" loading="lazy">
-            <img src="31for31/The invisible Man.JPG" alt="The Invisible Man" loading="lazy">
-            <img src="31for31/The woman in the yard.JPG" alt="The Woman in the Yard" loading="lazy">
-            <img src="31for31/Terrifier.PNG" alt="Terrifier" loading="lazy">
-            <img src="31for31/Nosferatu.JPG" alt="Nosferatu" loading="lazy">
-            <img src="31for31/28 days later.JPG" alt="28 Days Later" loading="lazy">
-            <img src="31for31/The Nun 2.JPG" alt="The Nun 2" loading="lazy">
-            <img src="31for31/The Texas Chainsaw massacre.JPG" alt="The Texas Chainsaw Massacre" loading="lazy">
-            <img src="31for31/Late night with the devil.JPG" alt="Late Night with the Devil" loading="lazy">
-            <img src="31for31/A girl walks home alone at night.JPG" alt="A Girl Walks Home Alone at Night" loading="lazy">
-            <img src="31for31/DASHCAM.JPG" alt="DashCam" loading="lazy">
-            <img src="31for31/IMMACULATE.JPG" alt="Immaculate" loading="lazy">
-            <img src="31for31/STUDIO666.JPG" alt="Studio 666" loading="lazy">
-            <img src="31for31/HAPPYDEATHDAY.JPG" alt="Happy Death Day" loading="lazy">
-            <img src="31for31/HIC.JPG" alt="The Haunting in Connecticut" loading="lazy">
-            <img src="31for31/BRIGHTBURN.JPG" alt="Brightburn" loading="lazy">
-            <img src="31for31/LONGLEGS.JPG" alt="LongLegs" loading="lazy">
-            <img src="31for31/NOONEWILLSAVEYOU.JPG" alt="No One Will Save You" loading="lazy">
-            <img src="31for31/TDVE.JPG" alt="Tucker and Dale vs. Evil" loading="lazy">
-            <img src="31for31/VHS.JPG" alt="V/H/S" loading="lazy">
-            <img src="31for31/The Exorcist.JPG" alt="The Exorcist" loading="lazy">
-            <img src="31for31/The Lighthouse.JPG" alt="The Lighthouse" loading="lazy">
-            <img src="31for31/The Substance.png" alt="The Substance" loading="lazy">
-            <img src="31for31/Smile.JPG" alt="Smile" loading="lazy">
-            <img src="31for31/Ritual.JPG" alt="The Ritual" loading="lazy">
-            <img src="31for31/Malevolent.JPG" alt="Malevolent" loading="lazy">
-            <img src="31for31/Prettything.JPG" alt="I Am the Pretty Thing That Lives in the House" loading="lazy">
-            <img src="31for31/TDDD.JPG" alt="The Dead Don't Die" loading="lazy">
-        </div>
+        <div class="day-grid" id="gallery-grid"></div>
     </main>
 
     <footer class="site-footer">
@@ -65,5 +34,7 @@
     <script src="assets/js/config.js"></script>
     <script src="assets/js/supabase-client.js"></script>
     <script src="assets/js/auth.js"></script>
+    <script src="assets/js/current-list.js"></script>
+    <script src="assets/js/gallery.js"></script>
 </body>
 </html>
