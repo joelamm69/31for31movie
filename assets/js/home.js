@@ -1,6 +1,11 @@
 // Powers index.html: Tonight's Feature hero + 31-day grid (both driven by
-// the real CURRENT_LIST data), a live TMDB Discover panel, and a Supabase-
-// backed newsletter signup.
+// the real "31for31 2026" list published to Supabase's movie_lists table
+// from My Lists), a live TMDB Discover panel, and a Supabase-backed
+// newsletter signup.
+
+// The published list this homepage shows. Rename/republish under a
+// different name in My Lists next year and update this to match.
+const HOME_LIST_NAME = "31for31 2026";
 
 function pad2(n) { return String(n).padStart(2, "0"); }
 
@@ -16,9 +21,31 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
-function renderFeature() {
+// TMDB movies use poster_path (needs the TMDB CDN prefix); the legacy
+// local CURRENT_LIST fallback uses a direct file path.
+function posterSrcFor(movie) {
+    return movie.file || tmdbPosterUrl(movie.poster_path) || "";
+}
+
+// Pulls the real published list (same public query community.html uses)
+// and resolves each TMDB id to full movie details. Falls back to the
+// local CURRENT_LIST (assets/js/current-list.js) if the list isn't found,
+// isn't published, or TMDB isn't configured.
+async function loadHomeList() {
+    try {
+        const { data, error } = await window.sb.from("movie_lists").select("*").eq("list_name", HOME_LIST_NAME).maybeSingle();
+        if (error) throw error;
+        if (!data || !data.movie_ids || !data.movie_ids.length) return null;
+        const movies = await tmdbFetchMovies(data.movie_ids);
+        return movies.length ? movies : null;
+    } catch (err) {
+        console.error(`Failed to load "${HOME_LIST_NAME}" from Supabase`, err);
+        return null;
+    }
+}
+
+function renderFeature(list) {
     const { isOctober, today } = octoberDayInfo();
-    const list = window.CURRENT_LIST || [];
     const dayIndex = isOctober ? Math.min(today, list.length) : 1;
     const movie = list[dayIndex - 1];
     if (!movie) return;
@@ -26,14 +53,13 @@ function renderFeature() {
     document.getElementById("feature-eyebrow-label").textContent = isOctober ? "Tonight's Feature" : "Preview";
     document.getElementById("feature-eyebrow-sub").textContent = isOctober ? `Day ${pad2(dayIndex)} of ${list.length}` : `This October · Day ${pad2(dayIndex)} preview`;
     document.getElementById("feature-title").textContent = movie.title;
-    document.getElementById("feature-poster").src = movie.file;
+    document.getElementById("feature-poster").src = posterSrcFor(movie);
     document.getElementById("feature-poster").alt = movie.title;
     document.getElementById("feature-day").textContent = `DAY ${pad2(dayIndex)}`;
 }
 
-function renderDayGrid() {
+function renderDayGrid(list) {
     const { isOctober, today } = octoberDayInfo();
-    const list = window.CURRENT_LIST || [];
     const grid = document.getElementById("day-grid");
     if (!grid) return;
 
@@ -45,7 +71,7 @@ function renderDayGrid() {
             return `
                 <div class="day-tile${sealed ? " sealed" : ""}${isToday ? " today" : ""}">
                     <div class="tile-art">
-                        <img src="${movie.file}" alt="${sealed ? "" : escapeHtml(movie.title)}" loading="lazy">
+                        <img src="${posterSrcFor(movie)}" alt="${sealed ? "" : escapeHtml(movie.title)}" loading="lazy">
                         <div class="daynum">${pad2(day)}</div>
                     </div>
                     <div class="tile-title">${sealed ? "———" : escapeHtml(movie.title)}</div>
@@ -154,9 +180,12 @@ async function submitNewsletter(e) {
     msgEl.innerHTML = `<div class="alert alert-info" style="margin:0.75rem 0 0">You're in — first reminder goes out October 1st.</div>`;
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-    renderFeature();
-    renderDayGrid();
+document.addEventListener("DOMContentLoaded", async () => {
+    const list = (await loadHomeList()) || window.CURRENT_LIST || [];
+    if (list.length) {
+        renderFeature(list);
+        renderDayGrid(list);
+    }
     loadPopularHorror();
     document.getElementById("random-pick-btn")?.addEventListener("click", randomPick);
     document.getElementById("newsletter-form")?.addEventListener("submit", submitNewsletter);
