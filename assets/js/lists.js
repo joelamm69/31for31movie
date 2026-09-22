@@ -139,7 +139,7 @@ function movieRowHtml(listId, movie) {
     const year = movie.release_date ? movie.release_date.slice(0, 4) : "N/A";
     return `
         <div class="movie-row" data-movie-id="${movie.id}">
-            ${poster ? `<img src="${poster}" alt="">` : `<div style="width:46px;height:69px;border-radius:6px;background:var(--bg-raised);flex-shrink:0"></div>`}
+            ${poster ? `<img src="${poster}" alt="">` : `<div style="width:46px;height:69px;border-radius:0;background:var(--bg-raised);flex-shrink:0"></div>`}
             <div class="movie-meta">
                 <div class="title">${escapeHtml(movie.title)}</div>
                 <div class="year">${year}${watched ? " · Watched" : ""}</div>
@@ -288,7 +288,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                               const poster = tmdbPosterUrl(m.poster_path);
                               return `
                                 <div class="movie-row" data-action="add-movie" data-list-id="${listId}" data-movie='${JSON.stringify(m).replace(/'/g, "&#39;")}' style="cursor:pointer">
-                                    ${poster ? `<img src="${poster}" alt="">` : `<div style="width:46px;height:69px;border-radius:6px;background:var(--bg-raised);flex-shrink:0"></div>`}
+                                    ${poster ? `<img src="${poster}" alt="">` : `<div style="width:46px;height:69px;border-radius:0;background:var(--bg-raised);flex-shrink:0"></div>`}
                                     <div class="movie-meta">
                                         <div class="title">${escapeHtml(m.title)}</div>
                                         <div class="year">${m.release_date ? m.release_date.slice(0, 4) : "N/A"}</div>

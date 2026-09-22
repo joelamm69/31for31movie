@@ -39,7 +39,7 @@ function posterPreviewsHtml(movies) {
         .slice(0, 4)
         .map((m) => {
             const url = tmdbPosterUrl(m.poster_path);
-            return url ? `<img src="${url}" alt="" style="width:36px;height:54px;object-fit:cover;border-radius:4px;border:1px solid var(--border)">` : "";
+            return url ? `<img src="${url}" alt="" style="width:36px;height:54px;object-fit:cover;border-radius:0;border:1px solid var(--border)">` : "";
         })
         .join("");
 }
@@ -49,7 +49,7 @@ function movieDetailRowHtml(movie) {
     const year = movie.release_date ? movie.release_date.slice(0, 4) : "N/A";
     return `
         <div class="movie-row">
-            ${poster ? `<img src="${poster}" alt="">` : `<div style="width:46px;height:69px;border-radius:6px;background:var(--bg-raised);flex-shrink:0"></div>`}
+            ${poster ? `<img src="${poster}" alt="">` : `<div style="width:46px;height:69px;border-radius:0;background:var(--bg-raised);flex-shrink:0"></div>`}
             <div class="movie-meta">
                 <div class="title">${escapeHtml(movie.title)}</div>
                 <div class="year">${year}</div>
@@ -77,7 +77,7 @@ function communityCardHtml(record, previewMovies) {
         <div class="card" data-list-id="${record.id}">
             <div style="cursor:pointer" data-action="toggle-community" data-list-id="${record.id}">
                 <h3 style="margin-bottom:0.25rem">${escapeHtml(record.list_name)}</h3>
-                <div class="count" style="color:var(--accent)">${(record.movie_ids || []).length} Horror Movies · ${relativeTime(record.created_at)}</div>
+                <div class="count" style="color:var(--red)">${(record.movie_ids || []).length} Horror Movies · ${relativeTime(record.created_at)}</div>
                 ${!isOpen && previewMovies.length ? `<div style="display:flex;gap:6px;margin-top:0.6rem">${posterPreviewsHtml(previewMovies)}</div>` : ""}
                 <button class="btn btn-sm btn-ghost" style="margin-top:0.6rem" data-action="toggle-community" data-list-id="${record.id}">${isOpen ? "Hide Movies" : "View Movies"}</button>
             </div>
