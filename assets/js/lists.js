@@ -8,6 +8,7 @@ let currentUserName = null;
 let library = { lists: [], watchedMovieIds: new Set(), movieNotes: {} };
 let openListId = null;
 let saveTimer = null;
+let movieRatings = new Map(); // movie_id -> 1-5, this user's own ratings from movie_ratings
 
 function newList(name) {
     return { id: crypto.randomUUID(), name, movies: [] };
@@ -34,6 +35,15 @@ async function loadLibrary() {
         library.lists = [newList("My October List")];
         await saveLibrary();
     }
+}
+
+async function loadRatings() {
+    const { data, error } = await window.sb.from("movie_ratings").select("movie_id,rating").eq("user_id", currentUserId);
+    if (error) {
+        console.error("Failed to load ratings", error);
+        return;
+    }
+    movieRatings = new Map((data || []).map((r) => [r.movie_id, r.rating]));
 }
 
 async function saveLibrary() {
@@ -128,6 +138,26 @@ function setNoteAction(movieId, note) {
     scheduleSave();
 }
 
+// Writes to the shared movie_ratings table (same one the app's rating
+// feature uses, and what the Live Feed reads), not the private per-list
+// notes — so a rating given here shows up for everyone, live.
+async function rateMovieAction(movieId, rating) {
+    const previous = movieRatings.get(movieId);
+    movieRatings.set(movieId, rating);
+    render();
+
+    const { error } = await window.sb
+        .from("movie_ratings")
+        .upsert({ movie_id: movieId, user_id: currentUserId, user_name: currentUserName, rating }, { onConflict: "movie_id,user_id" });
+
+    if (error) {
+        console.error("Failed to save rating", error);
+        if (previous === undefined) movieRatings.delete(movieId);
+        else movieRatings.set(movieId, previous);
+        render();
+    }
+}
+
 async function publishListAction(listId) {
     const list = findList(listId);
     if (!list || list.movies.length === 0) return alert("Add at least one movie before publishing.");
@@ -146,6 +176,16 @@ async function publishListAction(listId) {
     }
 }
 
+function starsHtml(movieId) {
+    const rating = movieRatings.get(movieId) || 0;
+    const stars = [1, 2, 3, 4, 5]
+        .map(
+            (n) => `<span class="star${n <= rating ? " filled" : ""}" data-action="rate" data-movie-id="${movieId}" data-value="${n}">&#9733;</span>`
+        )
+        .join("");
+    return `<div class="rating-stars" data-movie-id="${movieId}">${stars}${rating ? `<span class="label" style="margin-left:6px">${rating}/5 · public</span>` : ""}</div>`;
+}
+
 function movieRowHtml(listId, movie) {
     const poster = tmdbPosterUrl(movie.poster_path);
     const watched = library.watchedMovieIds.has(movie.id);
@@ -157,8 +197,9 @@ function movieRowHtml(listId, movie) {
             <div class="movie-meta">
                 <div class="title">${escapeHtml(movie.title)}</div>
                 <div class="year">${year}${watched ? " · Watched" : ""}</div>
+                ${starsHtml(movie.id)}
                 <input type="text" class="note-input" data-action="note" data-list-id="${listId}" data-movie-id="${movie.id}"
-                    placeholder="Notes / rating..." value="${escapeHtml(note)}" style="margin-top:4px;width:100%;font-size:0.8rem;padding:0.3rem 0.5rem;">
+                    placeholder="Notes..." value="${escapeHtml(note)}" style="margin-top:4px;width:100%;font-size:0.8rem;padding:0.3rem 0.5rem;">
             </div>
             <div class="movie-actions">
                 <button class="btn btn-sm ${watched ? "btn-primary" : "btn-ghost"}" data-action="watched" data-movie-id="${movie.id}">${watched ? "✓ Watched" : "Mark Watched"}</button>
@@ -228,7 +269,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentUserId = user.id;
     currentUserName = displayNameFor(user);
 
-    await loadLibrary();
+    await Promise.all([loadLibrary(), loadRatings()]);
     render();
 
     document.getElementById("new-list-btn")?.addEventListener("click", () => {
@@ -239,6 +280,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     const container = document.getElementById("lists-container");
 
     container.addEventListener("click", async (e) => {
+        const star = e.target.closest("[data-action='rate']");
+        if (star) {
+            rateMovieAction(Number(star.dataset.movieId), Number(star.dataset.value));
+            return;
+        }
+
         const btn = e.target.closest("button[data-action]");
         if (btn) {
             const { action, listId, movieId } = btn.dataset;
