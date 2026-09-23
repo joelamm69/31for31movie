@@ -14,6 +14,15 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+// Defense in depth: the app has historically fallen back to email when a
+// user has no display name set, so some existing rows may carry one even
+// though this site's own code now never writes an email into these
+// tables (see publicNameFor in auth.js). Never render one on this public
+// page regardless of source.
+function safeDisplayName(name) {
+    return name && !name.includes("@") ? name : "Anonymous";
+}
+
 function relativeTime(iso) {
     const diffMs = Date.now() - new Date(iso).getTime();
     const mins = Math.round(diffMs / 60000);
@@ -57,7 +66,7 @@ function feedItemHtml(item) {
         <div class="movie-row">
             ${poster ? `<img src="${poster}" alt="">` : `<div style="width:46px;height:69px;background:var(--bg-raised);flex-shrink:0"></div>`}
             <div class="movie-meta">
-                <div class="title">${escapeHtml(item.user_name)} ${action} ${escapeHtml(title)}</div>
+                <div class="title">${escapeHtml(safeDisplayName(item.user_name))} ${action} ${escapeHtml(title)}</div>
                 <div class="year">${relativeTime(item.created_at)}</div>
             </div>
         </div>
