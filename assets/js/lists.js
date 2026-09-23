@@ -4,6 +4,7 @@
 // the iPad app reads and writes, so data stays in sync across both.
 
 let currentUserId = null;
+let currentUserName = null;
 let library = { lists: [], watchedMovieIds: new Set(), movieNotes: {} };
 let openListId = null;
 let saveTimer = null;
@@ -104,9 +105,22 @@ function toggleWatchedAction(movieId) {
         library.watchedMovieIds.delete(movieId);
     } else {
         library.watchedMovieIds.add(movieId);
+        logWatchActivity(movieId);
     }
     saveLibrary();
     render();
+}
+
+// Fire-and-forget: logs a public "watched" event for the live activity
+// feed (activity.html). Never blocks the UI — a failure here shouldn't
+// stop the user from marking a movie watched.
+async function logWatchActivity(movieId) {
+    const { error } = await window.sb.from("watch_activity").insert({
+        user_id: currentUserId,
+        user_name: currentUserName,
+        movie_id: movieId,
+    });
+    if (error) console.error("Failed to log watch activity", error);
 }
 
 function setNoteAction(movieId, note) {
@@ -212,6 +226,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const user = await requireAuth();
     if (!user) return;
     currentUserId = user.id;
+    currentUserName = displayNameFor(user);
 
     await loadLibrary();
     render();

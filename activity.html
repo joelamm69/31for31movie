@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Lists — 31 for 31</title>
+    <title>Live Feed — 31 for 31</title>
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
@@ -14,18 +14,18 @@
             <a href="index.html">Home</a>
             <a href="lists.html">My Lists</a>
             <a href="community.html">Community</a>
-            <a href="activity.html">Live Feed</a>
+            <a href="activity.html" class="active">Live Feed</a>
         </nav>
         <div class="nav-auth" id="nav-auth"></div>
     </header>
 
     <main>
         <div class="section-heading">
-            <h1>My Lists</h1>
-            <button class="btn btn-primary" id="new-list-btn">+ New List</button>
+            <h1>Live Feed</h1>
+            <span class="label"><span style="color:var(--red)">&#9679;</span> LIVE</span>
         </div>
-        <p>These lists are synced to your account — the same lists you see in the 31 for 31 app.</p>
-        <div id="lists-container" class="lists-grid"></div>
+        <p>What everyone's watching and rating, as it happens.</p>
+        <div id="activity-feed" class="card" style="padding:0.5rem 1.4rem"></div>
     </main>
 
     <footer class="site-footer">
@@ -36,8 +36,8 @@
     <script src="assets/js/config.js"></script>
     <script src="assets/js/supabase-client.js"></script>
     <script src="assets/js/auth.js"></script>
-    <script src="assets/js/tmdb-config.js" onerror="console.warn('tmdb-config.js not set up yet — movie search is disabled. See assets/js/tmdb-config.example.js')"></script>
+    <script src="assets/js/tmdb-config.js" onerror="console.warn('tmdb-config.js not set up — feed will show movie ids instead of titles/posters.')"></script>
     <script src="assets/js/tmdb.js"></script>
-    <script src="assets/js/lists.js"></script>
+    <script src="assets/js/activity.js"></script>
 </body>
 </html>
