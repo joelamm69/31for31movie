@@ -7,6 +7,15 @@ function displayNameFor(user) {
     return user?.email || "Anonymous";
 }
 
+// Like displayNameFor, but NEVER falls back to email — use this for
+// anything that gets written to a public-readable table (movie_ratings,
+// watch_activity). displayNameFor's email fallback is fine for the nav
+// badge (you're the only one who sees your own nav), but writing an
+// unset display name into a public row would leak it to everyone.
+function publicNameFor(user) {
+    return user?.user_metadata?.display_name?.trim() || "Anonymous";
+}
+
 async function currentUser() {
     const { data } = await window.sb.auth.getSession();
     return data.session?.user ?? null;

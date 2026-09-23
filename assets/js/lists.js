@@ -267,7 +267,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const user = await requireAuth();
     if (!user) return;
     currentUserId = user.id;
-    currentUserName = displayNameFor(user);
+    currentUserName = publicNameFor(user);
 
     await Promise.all([loadLibrary(), loadRatings()]);
     render();
