@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy — 31 for 31</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <div class="vhs-overlay"></div>
+    <header class="site-header">
+        <a href="index.html" class="brand"><span class="b1">31</span><span class="b2">FOR</span><span class="b3">31</span></a>
+        <nav class="site-nav">
+            <a href="index.html">Home</a>
+            <a href="lists.html">My Lists</a>
+            <a href="community.html">Community</a>
+            <a href="activity.html">Live Feed</a>
+        </nav>
+        <div class="nav-auth" id="nav-auth"></div>
+    </header>
+
+    <main>
+        <article class="blog-post">
+            <h1>Privacy Policy</h1>
+            <div class="date">Last updated October 2026</div>
+
+            <p>This page explains what 31 for 31 collects, why, and how you can control it. It covers this website and the companion iPad app, since they share the same account and data.</p>
+
+            <h2 style="margin-top:2rem">Account information</h2>
+            <p>When you sign up, you give us an email address and password, and optionally a display name. Your password is handled entirely by our authentication provider, Supabase — we never see or store it ourselves. If you don't set a display name, we never use your email as a stand-in for it anywhere public; it falls back to "Anonymous" instead.</p>
+
+            <h2 style="margin-top:2rem">Your lists are private</h2>
+            <p>The lists you build, which movies you've marked watched, and any personal notes you write are private to your account. Row-level security on our database enforces this — only you can read or write your own list data, by design, not just by convention.</p>
+
+            <h2 style="margin-top:2rem">What's public by default</h2>
+            <p>Some activity is public on purpose, since the site is built around sharing with other horror fans:</p>
+            <ul style="color:var(--text-dim)">
+                <li><strong>Marking a movie watched</strong> posts an entry (your display name + the movie) to the public Live Feed.</li>
+                <li><strong>Rating a movie</strong> (1&ndash;5 stars) is public too, shown on the Live Feed with your display name and the rating.</li>
+                <li><strong>Publishing a list</strong> to Community makes that list's name and movies visible to everyone, without your name attached.</li>
+            </ul>
+            <p>Anything you haven't explicitly marked watched, rated, or published stays private.</p>
+
+            <h2 style="margin-top:2rem">Third parties we use</h2>
+            <p><strong>Supabase</strong> hosts our database and handles authentication. They process account and app data on our behalf under their own security practices.</p>
+            <p><strong>The Movie Database (TMDB)</strong> provides movie search results, posters, and details. Your browser talks to TMDB's API directly when you search for or view a movie, which means TMDB may see your IP address for those requests, under their own privacy policy &mdash; we don't control or see that traffic ourselves.</p>
+            <p>If we run website analytics, it's a privacy-focused, self-hosted tool that doesn't use cookies and can't identify individual visitors &mdash; it only gives us aggregate traffic patterns (e.g. how many people visited, roughly where from).</p>
+
+            <h2 style="margin-top:2rem">Cookies &amp; local storage</h2>
+            <p>We don't use advertising or cross-site tracking cookies. We do use your browser's local storage to keep you signed in between visits &mdash; that's necessary for the site to work and isn't used to track you anywhere else.</p>
+
+            <h2 style="margin-top:2rem">Keeping and deleting your data</h2>
+            <p>We keep your account and list data for as long as your account exists. To delete your account or any data associated with it, email us (below) and we'll take care of it.</p>
+
+            <h2 style="margin-top:2rem">Children's privacy</h2>
+            <p>31 for 31 is a horror movie site and isn't directed at or intended for children under 13.</p>
+
+            <h2 style="margin-top:2rem">Changes to this policy</h2>
+            <p>If this policy changes, we'll update the date at the top of this page.</p>
+
+            <h2 style="margin-top:2rem">Contact</h2>
+            <p>Questions about your data or this policy? Email <a href="mailto:harpist.cranks8r@icloud.com">harpist.cranks8r@icloud.com</a>.</p>
+        </article>
+    </main>
+
+    <footer class="site-footer">
+        <span>&copy; 2026 31 for 31. Made for horror fans.</span>
+        <a href="privacy.html">Privacy</a>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/supabase-client.js"></script>
+    <script src="assets/js/auth.js"></script>
+</body>
+</html>

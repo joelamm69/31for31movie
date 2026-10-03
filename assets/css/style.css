@@ -155,7 +155,12 @@ main {
     color: var(--text-dimmest);
     display: flex;
     justify-content: center;
+    align-items: center;
+    gap: 1.4rem;
+    flex-wrap: wrap;
 }
+.site-footer a { color: var(--text-dimmest); }
+.site-footer a:hover { color: var(--text); }
 
 /* Buttons & forms */
 .btn {
