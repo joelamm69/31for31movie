@@ -4,6 +4,7 @@
 
 let allLists = [];
 let openRecordId = null;
+let currentUserId = null;
 const movieCache = new Map(); // record id -> full Movie[] (fetched on first expand)
 
 async function fetchPublicLists() {
@@ -61,6 +62,7 @@ function movieDetailRowHtml(movie) {
 function communityCardHtml(record, previewMovies) {
     const isOpen = record.id === openRecordId;
     const cached = movieCache.get(record.id);
+    const isMine = currentUserId && record.user_id === currentUserId;
 
     let detailHtml = "";
     if (isOpen) {
@@ -79,7 +81,10 @@ function communityCardHtml(record, previewMovies) {
                 <h3 style="margin-bottom:0.25rem">${escapeHtml(record.list_name)}</h3>
                 <div class="count" style="color:var(--red)">${(record.movie_ids || []).length} Horror Movies · ${relativeTime(record.created_at)}</div>
                 ${!isOpen && previewMovies.length ? `<div style="display:flex;gap:6px;margin-top:0.6rem">${posterPreviewsHtml(previewMovies)}</div>` : ""}
-                <button class="btn btn-sm btn-ghost" style="margin-top:0.6rem" data-action="toggle-community" data-list-id="${record.id}">${isOpen ? "Hide Movies" : "View Movies"}</button>
+            </div>
+            <div class="list-actions" style="margin-top:0.6rem">
+                <button class="btn btn-sm btn-ghost" data-action="toggle-community" data-list-id="${record.id}">${isOpen ? "Hide Movies" : "View Movies"}</button>
+                ${isMine ? `<button class="btn btn-sm btn-danger" data-action="delete-community" data-list-id="${record.id}">Delete</button>` : ""}
             </div>
             ${detailHtml}
         </div>
@@ -104,9 +109,24 @@ async function toggleRecord(container, lists, recordId) {
     }
 }
 
+// Removes just the public Community listing (movie_lists row) — the
+// user's actual list in My Lists is untouched.
+async function deleteListAction(recordId) {
+    const { error } = await window.sb.from("movie_lists").delete().eq("id", recordId);
+    if (error) {
+        console.error("Failed to delete shared list", error);
+        alert("Couldn't delete this list — try again.");
+        return false;
+    }
+    return true;
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
     const container = document.getElementById("community-container");
     if (!container) return;
+
+    const user = await currentUser();
+    currentUserId = user?.id ?? null;
 
     container.innerHTML = `<p>Loading community lists...</p>`;
     allLists = await fetchPublicLists();
@@ -119,7 +139,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     let visibleLists = allLists;
     await renderAll(container, visibleLists);
 
-    container.addEventListener("click", (e) => {
+    container.addEventListener("click", async (e) => {
+        const deleteBtn = e.target.closest("[data-action='delete-community']");
+        if (deleteBtn) {
+            if (!confirm("Remove this list from Community? Your list in My Lists won't be affected.")) return;
+            const recordId = deleteBtn.dataset.listId;
+            deleteBtn.disabled = true;
+            const ok = await deleteListAction(recordId);
+            if (ok) {
+                allLists = allLists.filter((r) => r.id !== recordId);
+                visibleLists = visibleLists.filter((r) => r.id !== recordId);
+                if (openRecordId === recordId) openRecordId = null;
+                if (visibleLists.length === 0) {
+                    container.innerHTML = `<div class="empty-state">No shared lists yet. Publish one from <a href="lists.html">My Lists</a> to be the first!</div>`;
+                } else {
+                    await renderAll(container, visibleLists);
+                }
+            } else {
+                deleteBtn.disabled = false;
+            }
+            return;
+        }
+
         const btn = e.target.closest("[data-action='toggle-community']");
         if (!btn) return;
         toggleRecord(container, visibleLists, btn.dataset.listId);
