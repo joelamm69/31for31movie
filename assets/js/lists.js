@@ -9,6 +9,7 @@ let library = { lists: [], watchedMovieIds: new Set(), movieNotes: {} };
 let openListId = null;
 let saveTimer = null;
 let movieRatings = new Map(); // movie_id -> 1-5, this user's own ratings from movie_ratings
+let publishedListIds = new Set(); // list.id values currently published to movie_lists
 
 function newList(name) {
     return { id: crypto.randomUUID(), name, movies: [] };
@@ -46,6 +47,18 @@ async function loadRatings() {
     movieRatings = new Map((data || []).map((r) => [r.movie_id, r.rating]));
 }
 
+// Which of this user's lists are currently published to Community — drives
+// both the "already published" button state and which lists get synced on
+// every save.
+async function loadPublishedLists() {
+    const { data, error } = await window.sb.from("movie_lists").select("list_id").eq("user_id", currentUserId);
+    if (error) {
+        console.error("Failed to load published lists", error);
+        return;
+    }
+    publishedListIds = new Set((data || []).map((r) => r.list_id).filter(Boolean));
+}
+
 async function saveLibrary() {
     const payload = {
         user_id: currentUserId,
@@ -55,7 +68,28 @@ async function saveLibrary() {
         updated_at: new Date().toISOString(),
     };
     const { error } = await window.sb.from("user_libraries").upsert(payload, { onConflict: "user_id" });
-    if (error) console.error("Failed to save library", error);
+    if (error) {
+        console.error("Failed to save library", error);
+        return;
+    }
+    await syncPublishedLists();
+}
+
+// Keeps every published list's Community copy live: whatever you publish
+// stays pointed at the real list, so edits here (add/remove a movie,
+// rename) show up on Community without re-publishing.
+async function syncPublishedLists() {
+    const published = library.lists.filter((l) => publishedListIds.has(l.id));
+    if (!published.length) return;
+    const results = await Promise.all(
+        published.map((list) =>
+            window.sb.from("movie_lists").upsert(
+                { user_id: currentUserId, list_id: list.id, list_name: list.name, movie_ids: list.movies.map((m) => m.id) },
+                { onConflict: "user_id,list_id" }
+            )
+        )
+    );
+    results.forEach(({ error }) => { if (error) console.error("Failed to sync published list", error); });
 }
 
 // Coalesce rapid edits (e.g. typing a note) into one write, same as the app.
@@ -88,6 +122,21 @@ function renameListAction(listId, name) {
 function deleteListAction(listId) {
     library.lists = library.lists.filter((l) => l.id !== listId);
     if (openListId === listId) openListId = null;
+
+    // If this list was published, remove its Community copy too — best
+    // effort, doesn't block the local delete.
+    if (publishedListIds.has(listId)) {
+        publishedListIds.delete(listId);
+        window.sb
+            .from("movie_lists")
+            .delete()
+            .eq("user_id", currentUserId)
+            .eq("list_id", listId)
+            .then(({ error }) => {
+                if (error) console.error("Failed to remove published copy", error);
+            });
+    }
+
     saveLibrary();
     render();
 }
@@ -158,22 +207,34 @@ async function rateMovieAction(movieId, rating) {
     }
 }
 
+// Publishes (or re-syncs) a list to Community. Upserts on (user_id,
+// list_id) so clicking this on an already-published list updates it in
+// place instead of creating a duplicate — though in normal use you won't
+// need to click it again, since saveLibrary() keeps published lists synced
+// automatically on every edit.
 async function publishListAction(listId) {
     const list = findList(listId);
     if (!list || list.movies.length === 0) return alert("Add at least one movie before publishing.");
-    const { data: sessionData } = await window.sb.auth.getSession();
-    const accessToken = sessionData.session?.access_token;
-    const { error } = await window.sb.from("movie_lists").insert({
-        user_id: currentUserId,
-        list_name: list.name,
-        movie_ids: list.movies.map((m) => m.id),
-    });
+
+    const alreadyPublished = publishedListIds.has(listId);
+    const { error } = await window.sb.from("movie_lists").upsert(
+        { user_id: currentUserId, list_id: listId, list_name: list.name, movie_ids: list.movies.map((m) => m.id) },
+        { onConflict: "user_id,list_id" }
+    );
+
     if (error) {
         console.error(error);
         alert("Failed to publish list.");
-    } else {
-        alert(`"${list.name}" published to Community!`);
+        return;
     }
+
+    publishedListIds.add(listId);
+    render();
+    alert(
+        alreadyPublished
+            ? `"${list.name}" updated on Community!`
+            : `"${list.name}" published to Community! It'll stay in sync automatically as you edit it.`
+    );
 }
 
 function starsHtml(movieId) {
@@ -211,6 +272,7 @@ function movieRowHtml(listId, movie) {
 
 function listCardHtml(list) {
     const isOpen = list.id === openListId;
+    const isPublished = publishedListIds.has(list.id);
     return `
         <div class="list-card" data-list-id="${list.id}">
             <div class="section-heading" style="margin-bottom:0">
@@ -220,7 +282,7 @@ function listCardHtml(list) {
             <div class="list-actions">
                 <button class="btn btn-sm" data-action="toggle" data-list-id="${list.id}">${isOpen ? "Close" : "Manage"}</button>
                 <button class="btn btn-sm btn-ghost" data-action="rename" data-list-id="${list.id}">Rename</button>
-                <button class="btn btn-sm btn-ghost" data-action="publish" data-list-id="${list.id}">Publish to Community</button>
+                <button class="btn btn-sm ${isPublished ? "btn-primary" : "btn-ghost"}" data-action="publish" data-list-id="${list.id}">${isPublished ? "✓ On Community" : "Publish to Community"}</button>
                 <button class="btn btn-sm btn-danger" data-action="delete" data-list-id="${list.id}">Delete</button>
             </div>
             ${isOpen ? listDetailHtml(list) : ""}
@@ -269,7 +331,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentUserId = user.id;
     currentUserName = publicNameFor(user);
 
-    await Promise.all([loadLibrary(), loadRatings()]);
+    await Promise.all([loadLibrary(), loadRatings(), loadPublishedLists()]);
     render();
 
     document.getElementById("new-list-btn")?.addEventListener("click", () => {
