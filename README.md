@@ -83,37 +83,30 @@ genres }` — the same shape TMDB's API returns, which is also exactly what
 table with the identical JSON shape, so a list created on the web shows up
 in the app (and vice versa) the next time either syncs.
 
-## Deploying to Hostinger (VPS/Cloud)
+## Deploying (Hostinger web hosting + GitHub)
 
-This is a static site — no build step, no Node process required to serve
-it. On your Hostinger VPS:
+The site is hosted on Hostinger web hosting, linked to this repo through
+hPanel → Website → Advanced → Git, with Auto Deployment on (a GitHub webhook).
+Every push to `main` goes live on its own; there is no server to manage.
 
-1. Point your domain's DNS A record at the VPS IP.
-2. Install nginx and certbot: `apt install nginx certbot python3-certbot-nginx`.
-3. Copy this repo to e.g. `/var/www/31for31` on the VPS.
-4. Create `assets/js/tmdb-config.js` on the server (see above) — it's
-   gitignored, so it won't come over with a `git pull`.
-5. nginx server block:
-
-   ```nginx
-   server {
-       listen 80;
-       server_name yourdomain.com www.yourdomain.com;
-       root /var/www/31for31;
-       index index.html;
-
-       location / {
-           try_files $uri $uri/ =404;
-       }
-   }
-   ```
-
-6. `certbot --nginx -d yourdomain.com -d www.yourdomain.com` for HTTPS.
-7. To deploy updates: `git pull` in `/var/www/31for31` (nginx serves the
-   files directly, no restart needed).
+`assets/js/tmdb-config.js` is gitignored, so it lives only on the host: it was
+created once in hPanel's File Manager under `public_html/assets/js/`. Git
+deploys leave it alone. If the site is ever re-created, add it again.
 
 ## Adding a blog post
 
-Copy `blog/posts/why-31-horror-movies.html`, edit the title/date/body, and
-add a `<article class="blog-list-item">` entry linking to it from
-`blog/index.html`.
+Posts are Markdown files in `blog/_posts/`. You never edit the HTML by hand.
+
+1. On GitHub, open `blog/_posts/` and click **Add file → Create new file**.
+2. Name it with the date and a short name, e.g.
+   `2026-12-01-best-christmas-horror.md`.
+3. Paste in the top of `_TEMPLATE.md` (the `---` header with `title:` and
+   `summary:`), then write the post below it.
+4. Click **Commit changes**.
+
+A GitHub Action (`.github/workflows/build-blog.yml`) then builds the page and
+the blog index, commits them, and Hostinger publishes them, usually within a
+couple of minutes. To change or remove a post, edit or delete its `.md` file
+the same way. Images go in `blog/images/`.
+
+To preview locally: `pip install markdown && python3 scripts/build_blog.py`.
