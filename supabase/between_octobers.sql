@@ -78,9 +78,16 @@ create index if not exists blocks_blocked_idx on blocks (blocked_id);
 alter table follows enable row level security;
 alter table blocks enable row level security;
 
--- security definer so policies on other tables can consult blocks/follows
--- without the caller being able to read other people's block lists.
-create or replace function is_blocked_between(a uuid, b uuid)
+-- Policy helpers live in a `private` schema, which Supabase's REST API does
+-- not expose, so they can be used inside RLS policies but can't be called as
+-- /rest/v1/rpc/... endpoints (is_blocked_between would otherwise let anyone
+-- check whether two accounts blocked each other). They're security definer
+-- so policies can consult blocks/follows without the caller being able to
+-- read other people's block lists.
+create schema if not exists private;
+grant usage on schema private to anon, authenticated;
+
+create or replace function private.is_blocked_between(a uuid, b uuid)
 returns boolean
 language sql stable security definer set search_path = public
 as $$
@@ -91,7 +98,7 @@ as $$
     );
 $$;
 
-create or replace function is_following(follower uuid, followee uuid)
+create or replace function private.is_following(follower uuid, followee uuid)
 returns boolean
 language sql stable security definer set search_path = public
 as $$
@@ -101,15 +108,15 @@ as $$
 $$;
 
 -- Can the current user see something `author` posted with `visibility`?
-create or replace function can_view(author uuid, visibility text)
+create or replace function private.can_view(author uuid, visibility text)
 returns boolean
 language sql stable security definer set search_path = public
 as $$
     select case
         when auth.uid() = author then true
-        when public.is_blocked_between(auth.uid(), author) then false
+        when private.is_blocked_between(auth.uid(), author) then false
         when visibility = 'public' then true
-        when visibility = 'followers' then auth.uid() is not null and public.is_following(auth.uid(), author)
+        when visibility = 'followers' then auth.uid() is not null and private.is_following(auth.uid(), author)
         else false
     end;
 $$;
@@ -121,13 +128,13 @@ create policy "Follows are viewable"
     on follows for select
     using (
         auth.uid() in (follower_id, followee_id)
-        or not (is_blocked_between(auth.uid(), follower_id) or is_blocked_between(auth.uid(), followee_id))
+        or not (private.is_blocked_between(auth.uid(), follower_id) or private.is_blocked_between(auth.uid(), followee_id))
     );
 
 drop policy if exists "Users can follow" on follows;
 create policy "Users can follow"
     on follows for insert
-    with check (auth.uid() = follower_id and not is_blocked_between(follower_id, followee_id));
+    with check (auth.uid() = follower_id and not private.is_blocked_between(follower_id, followee_id));
 
 drop policy if exists "Users can unfollow" on follows;
 create policy "Users can unfollow"
@@ -204,7 +211,7 @@ create policy "Entries are visible per their visibility"
     on watch_entries for select
     using (
         auth.uid() = user_id
-        or (not hidden_by_moderator and can_view(user_id, visibility))
+        or (not hidden_by_moderator and private.can_view(user_id, visibility))
         or is_site_admin()
     );
 
@@ -352,7 +359,7 @@ alter table challenges enable row level security;
 alter table challenge_members enable row level security;
 alter table challenge_items enable row level security;
 
-create or replace function is_challenge_member(cid uuid)
+create or replace function private.is_challenge_member(cid uuid)
 returns boolean
 language sql stable security definer set search_path = public
 as $$
@@ -360,17 +367,17 @@ as $$
         or exists (select 1 from public.challenge_members where challenge_id = cid and user_id = auth.uid());
 $$;
 
-create or replace function can_view_challenge(cid uuid)
+create or replace function private.can_view_challenge(cid uuid)
 returns boolean
 language sql stable security definer set search_path = public
 as $$
-    select public.is_challenge_member(cid)
-        or exists (select 1 from public.challenges c where c.id = cid and public.can_view(c.owner_id, c.visibility));
+    select private.is_challenge_member(cid)
+        or exists (select 1 from public.challenges c where c.id = cid and private.can_view(c.owner_id, c.visibility));
 $$;
 
 drop policy if exists "Challenges are visible per their visibility" on challenges;
 create policy "Challenges are visible per their visibility"
-    on challenges for select using (can_view_challenge(id));
+    on challenges for select using (private.can_view_challenge(id));
 
 drop policy if exists "Users create their own challenges" on challenges;
 create policy "Users create their own challenges"
@@ -386,7 +393,7 @@ create policy "Owners delete their challenges"
 
 drop policy if exists "Members are visible with the challenge" on challenge_members;
 create policy "Members are visible with the challenge"
-    on challenge_members for select using (can_view_challenge(challenge_id));
+    on challenge_members for select using (private.can_view_challenge(challenge_id));
 
 -- Shared marathons: the owner adds friends (only people who follow each
 -- other, so nobody can be dropped into a stranger's marathon); a member can
@@ -396,8 +403,8 @@ create policy "Owners add mutual follows as members"
     on challenge_members for insert
     with check (
         exists (select 1 from challenges c where c.id = challenge_id and c.owner_id = auth.uid())
-        and is_following(auth.uid(), user_id)
-        and is_following(user_id, auth.uid())
+        and private.is_following(auth.uid(), user_id)
+        and private.is_following(user_id, auth.uid())
     );
 
 drop policy if exists "Owners remove members, members leave" on challenge_members;
@@ -410,22 +417,42 @@ create policy "Owners remove members, members leave"
 
 drop policy if exists "Items are visible with the challenge" on challenge_items;
 create policy "Items are visible with the challenge"
-    on challenge_items for select using (can_view_challenge(challenge_id));
+    on challenge_items for select using (private.can_view_challenge(challenge_id));
 
 drop policy if exists "Members add items" on challenge_items;
 create policy "Members add items"
     on challenge_items for insert
-    with check (auth.uid() = added_by and is_challenge_member(challenge_id));
+    with check (auth.uid() = added_by and private.is_challenge_member(challenge_id));
 
 drop policy if exists "Members update items" on challenge_items;
 create policy "Members update items"
     on challenge_items for update
-    using (is_challenge_member(challenge_id))
-    with check (is_challenge_member(challenge_id));
+    using (private.is_challenge_member(challenge_id))
+    with check (private.is_challenge_member(challenge_id));
 
 drop policy if exists "Members remove items" on challenge_items;
 create policy "Members remove items"
-    on challenge_items for delete using (is_challenge_member(challenge_id));
+    on challenge_items for delete using (private.is_challenge_member(challenge_id));
+
+------------------------------------------------------------------------------
+-- Function permissions
+------------------------------------------------------------------------------
+-- Policy helpers: callable by the API roles (policies run as the caller),
+-- but only from inside SQL, since the private schema isn't exposed.
+revoke all on all functions in schema private from public;
+grant execute on all functions in schema private to anon, authenticated;
+
+-- Earlier copies of the helpers lived in public (exposed as RPC endpoints);
+-- every policy above now points at the private ones.
+drop function if exists public.can_view_challenge(uuid);
+drop function if exists public.is_challenge_member(uuid);
+drop function if exists public.can_view(uuid, text);
+drop function if exists public.is_following(uuid, uuid);
+drop function if exists public.is_blocked_between(uuid, uuid);
+
+-- Trigger functions are never meant to be called directly.
+revoke execute on function public.drop_follows_on_block() from public, anon, authenticated;
+revoke execute on function public.keep_moderation_flag() from public, anon, authenticated;
 
 ------------------------------------------------------------------------------
 -- Realtime for the follow feed
