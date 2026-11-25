@@ -27,6 +27,7 @@
 --   private    only the author
 -- Entries a site admin hid after a report are visible only to their author.
 --
+-- Applied to the production project via the Supabase MCP on 2026-11-25.
 -- Safe to re-run.
 
 ------------------------------------------------------------------------------
