@@ -33,6 +33,33 @@ async function requireAuth() {
     return user;
 }
 
+// True only for accounts listed in the site_admins table (the site owner).
+// The database enforces this on every write; this just decides whether to
+// show the "Edit Home" link.
+async function isSiteAdmin() {
+    const { data, error } = await window.sb.rpc("is_site_admin");
+    if (error) {
+        console.error("Failed to check admin status", error);
+        return false;
+    }
+    return data === true;
+}
+
+let navAdminChecked = null; // user id we last checked, so token refreshes don't re-query
+
+async function addAdminNavLink(user) {
+    if (navAdminChecked === user.id) return;
+    navAdminChecked = user.id;
+    if (!(await isSiteAdmin())) return;
+    const nav = document.querySelector(".site-nav");
+    if (!nav || nav.querySelector('a[href="admin.html"]')) return;
+    const link = document.createElement("a");
+    link.href = "admin.html";
+    link.textContent = "Edit Home";
+    if ((location.pathname.split("/").pop() || "index.html") === "admin.html") link.classList.add("active");
+    nav.appendChild(link);
+}
+
 function renderNavAuth(user) {
     const el = document.getElementById("nav-auth");
     if (!el) return;
@@ -46,7 +73,10 @@ function renderNavAuth(user) {
             await window.sb.auth.signOut();
             location.href = "index.html";
         });
+        addAdminNavLink(user);
     } else {
+        navAdminChecked = null;
+        document.querySelector('.site-nav a[href="admin.html"]')?.remove();
         el.innerHTML = `<a class="btn btn-sm btn-primary" href="login.html">Log In</a>`;
     }
 }
