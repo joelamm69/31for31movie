@@ -1,11 +1,17 @@
-// Powers index.html: Tonight's Feature hero + 31-day grid (both driven by
-// the real "31for31 2026" list published to Supabase's movie_lists table
-// from My Lists), a live TMDB Discover panel, and a Supabase-backed
-// newsletter signup.
+// Powers index.html. What the top of the page shows is chosen by the site
+// owner on admin.html and stored in Supabase's site_settings table
+// (key = 'home'), in one of three modes:
+//   list     -> one of the owner's lists: Tonight's Feature hero + day grid
+//               (October countdown optional)
+//   movie    -> a single promoted movie, plus what the community rated it
+//   discover -> movies the community has rated most recently
+// If that row is missing or can't be read, it falls back to the published
+// "31for31 2026" list, then to the local CURRENT_LIST.
+// Below that: a live TMDB Discover panel and a newsletter signup.
 
-// The published list this homepage shows. Rename/republish under a
-// different name in My Lists next year and update this to match.
+// Fallback list when site_settings has nothing usable.
 const HOME_LIST_NAME = "31for31 2026";
+const DISCOVER_LIMIT = 24;
 
 function pad2(n) { return String(n).padStart(2, "0"); }
 
@@ -21,17 +27,65 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
-// TMDB movies use poster_path (needs the TMDB CDN prefix); the legacy
-// local CURRENT_LIST fallback uses a direct file path.
-function posterSrcFor(movie) {
-    return movie.file || tmdbPosterUrl(movie.poster_path) || "";
+// Defense in depth, same as activity.js: never show an email as a name.
+function safeDisplayName(name) {
+    return name && !name.includes("@") ? name : "Anonymous";
 }
 
-// Pulls the real published list (same public query community.html uses)
-// and resolves each TMDB id to full movie details. Falls back to the
-// local CURRENT_LIST (assets/js/current-list.js) if the list isn't found,
-// isn't published, or TMDB isn't configured.
-async function loadHomeList() {
+function relativeTime(iso) {
+    const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.round(hours / 24)}d ago`;
+}
+
+function yearOf(movie) {
+    return (movie?.release_date || "").slice(0, 4);
+}
+
+// TMDB movies use poster_path (needs the TMDB CDN prefix); the legacy
+// local CURRENT_LIST fallback uses a direct file path.
+function posterSrcFor(movie, size) {
+    return movie.file || tmdbPosterUrl(movie.poster_path, size) || "";
+}
+
+function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+}
+
+function setTags(tags) {
+    const el = document.getElementById("feature-tags");
+    if (el) el.innerHTML = tags.filter(Boolean).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("");
+}
+
+function setHeroPoster(movie, label) {
+    const img = document.getElementById("feature-poster");
+    img.src = posterSrcFor(movie, "w500");
+    img.alt = movie.title || "";
+    setText("feature-meta-label", label);
+}
+
+function setGridVisible(visible) {
+    const section = document.getElementById("home-grid-section");
+    if (section) section.hidden = !visible;
+}
+
+async function loadHomeSettings() {
+    try {
+        const { data, error } = await window.sb.from("site_settings").select("*").eq("key", "home").maybeSingle();
+        if (error) throw error;
+        return data;
+    } catch (err) {
+        console.error("Failed to load home page settings", err);
+        return null;
+    }
+}
+
+// Old behaviour: the published "31for31 2026" list, resolved through TMDB.
+async function loadFallbackList() {
     try {
         const { data, error } = await window.sb.from("movie_lists").select("*").eq("list_name", HOME_LIST_NAME).maybeSingle();
         if (error) throw error;
@@ -44,47 +98,196 @@ async function loadHomeList() {
     }
 }
 
-function renderFeature(list) {
+// --- Mode: list ---
+
+function renderListMode(list, { listName, countdown, headline, blurb }) {
     const { isOctober, today } = octoberDayInfo();
-    const dayIndex = isOctober ? Math.min(today, list.length) : 1;
+    const counting = countdown && isOctober;
+    const dayIndex = counting ? Math.min(today, list.length) : 1;
     const movie = list[dayIndex - 1];
     if (!movie) return;
 
-    document.getElementById("feature-eyebrow-label").textContent = isOctober ? "Tonight's Feature" : "Preview";
-    document.getElementById("feature-eyebrow-sub").textContent = isOctober ? `Day ${pad2(dayIndex)} of ${list.length}` : `This October · Day ${pad2(dayIndex)} preview`;
-    document.getElementById("feature-title").textContent = movie.title;
-    document.getElementById("feature-poster").src = posterSrcFor(movie);
-    document.getElementById("feature-poster").alt = movie.title;
-    document.getElementById("feature-day").textContent = `DAY ${pad2(dayIndex)}`;
-}
+    const name = listName || "The List";
+    const defaultBadge = countdown ? (isOctober ? "Tonight's Feature" : "Preview") : "Featured";
+    setText("feature-eyebrow-label", headline || defaultBadge);
+    setText(
+        "feature-eyebrow-sub",
+        countdown
+            ? (isOctober ? `Day ${pad2(dayIndex)} of ${list.length}` : `This October · Day ${pad2(dayIndex)} preview`)
+            : `${list.length} films`
+    );
+    setText("feature-title", movie.title);
+    setText("feature-sub", blurb || `From the ${name} list.`);
+    setTags([name, "Horror"]);
+    setHeroPoster(movie, name.toUpperCase());
+    setText("feature-day", countdown ? `DAY ${pad2(dayIndex)}` : `#${pad2(dayIndex)}`);
 
-function renderDayGrid(list) {
-    const { isOctober, today } = octoberDayInfo();
+    setText("day-grid-heading", name);
     const grid = document.getElementById("day-grid");
-    if (!grid) return;
-
     grid.innerHTML = list
-        .map((movie, i) => {
+        .map((m, i) => {
             const day = i + 1;
-            const sealed = isOctober && day > today;
-            const isToday = isOctober && day === today;
+            const sealed = counting && day > today;
+            const isToday = counting && day === today;
             return `
                 <div class="day-tile${sealed ? " sealed" : ""}${isToday ? " today" : ""}">
                     <div class="tile-art">
-                        <img src="${posterSrcFor(movie)}" alt="${sealed ? "" : escapeHtml(movie.title)}" loading="lazy">
+                        <img src="${posterSrcFor(m)}" alt="${sealed ? "" : escapeHtml(m.title)}" loading="lazy">
                         <div class="daynum">${pad2(day)}</div>
                     </div>
-                    <div class="tile-title">${sealed ? "———" : escapeHtml(movie.title)}</div>
+                    <div class="tile-title">${sealed ? "———" : escapeHtml(m.title)}</div>
                 </div>
             `;
         })
         .join("");
 
-    const revealedCount = isOctober ? today : list.length;
-    const sealedCount = isOctober ? list.length - today : 0;
-    document.getElementById("day-grid-status").textContent = isOctober
-        ? `${pad2(revealedCount)} REVEALED / ${pad2(sealedCount)} SEALED`
-        : `${list.length} FILMS`;
+    setText(
+        "day-grid-status",
+        counting ? `${pad2(today)} REVEALED / ${pad2(Math.max(list.length - today, 0))} SEALED` : `${list.length} FILMS`
+    );
+    setGridVisible(true);
+}
+
+// --- Mode: movie ---
+
+async function renderMovieMode(movie, { headline, blurb }) {
+    setText("feature-eyebrow-label", headline || "Featured Film");
+    setText("feature-eyebrow-sub", yearOf(movie));
+    setText("feature-title", movie.title);
+    setText("feature-sub", blurb || movie.overview || "");
+    setTags([yearOf(movie), "Horror"]);
+    setHeroPoster(movie, "FEATURED FILM");
+    setText("feature-day", "★ PICK");
+
+    // Under the hero: what the community thought of it, if anyone rated it.
+    const { data, error } = await window.sb
+        .from("movie_ratings")
+        .select("user_name,rating,created_at")
+        .eq("movie_id", movie.id)
+        .order("created_at", { ascending: false })
+        .limit(30);
+    if (error) console.error("Failed to load ratings for featured movie", error);
+    const ratings = data || [];
+    if (!ratings.length) {
+        setGridVisible(false);
+        return;
+    }
+    const avg = ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length;
+    setText("feature-eyebrow-sub", [yearOf(movie), `★ ${avg.toFixed(1)} from ${ratings.length} rating${ratings.length === 1 ? "" : "s"}`].filter(Boolean).join(" · "));
+    setText("day-grid-heading", "What the Community Thinks");
+    setText("day-grid-status", `AVG ${avg.toFixed(1)} / 5`);
+    const grid = document.getElementById("day-grid");
+    grid.innerHTML = `<div style="grid-column:1/-1">${ratings
+        .map(
+            (r) => `
+            <div class="movie-row">
+                <div class="movie-meta">
+                    <div class="title">${escapeHtml(safeDisplayName(r.user_name))}</div>
+                    <div class="year">${relativeTime(r.created_at)}</div>
+                </div>
+                <div class="rating-stars">${[1, 2, 3, 4, 5].map((n) => `<span class="star${n <= r.rating ? " filled" : ""}">★</span>`).join("")}</div>
+            </div>`
+        )
+        .join("")}</div>`;
+    setGridVisible(true);
+}
+
+// --- Mode: discover (recently rated by the community) ---
+
+async function loadRecentlyRated() {
+    const { data, error } = await window.sb
+        .from("movie_ratings")
+        .select("movie_id,rating,user_name,created_at")
+        .order("created_at", { ascending: false })
+        .limit(300);
+    if (error) throw error;
+
+    // Group by movie, newest first.
+    const byMovie = new Map();
+    for (const r of data || []) {
+        if (!byMovie.has(r.movie_id)) {
+            if (byMovie.size >= DISCOVER_LIMIT) continue;
+            byMovie.set(r.movie_id, { movie_id: r.movie_id, latest: r, total: 0, count: 0 });
+        }
+        const entry = byMovie.get(r.movie_id);
+        entry.total += r.rating;
+        entry.count += 1;
+    }
+    const entries = [...byMovie.values()];
+    if (!entries.length) return [];
+
+    // Titles/posters: TMDB if configured, else the app's movie_activity rows
+    // (which carry a title and poster_path alongside each movie id).
+    const ids = entries.map((e) => e.movie_id);
+    const details = new Map();
+    (await tmdbFetchMovies(ids)).forEach((m) => details.set(m.id, m));
+    const missing = ids.filter((id) => !details.has(id));
+    if (missing.length) {
+        const { data: act } = await window.sb.from("movie_activity").select("movie_id,movie_title,poster_path").in("movie_id", missing);
+        (act || []).forEach((a) => {
+            if (!details.has(a.movie_id)) details.set(a.movie_id, { id: a.movie_id, title: a.movie_title, poster_path: a.poster_path });
+        });
+    }
+
+    return entries
+        .filter((e) => details.has(e.movie_id))
+        .map((e) => ({ ...e, movie: details.get(e.movie_id), avg: e.total / e.count }));
+}
+
+async function renderDiscoverMode({ headline, blurb }) {
+    let items = [];
+    try {
+        items = await loadRecentlyRated();
+    } catch (err) {
+        console.error("Failed to load recently rated movies", err);
+    }
+    if (!items.length) return false;
+
+    const top = items[0];
+    setText("feature-eyebrow-label", headline || "Just Reviewed");
+    setText("feature-eyebrow-sub", `${safeDisplayName(top.latest.user_name)} rated it ${top.latest.rating}/5 · ${relativeTime(top.latest.created_at)}`);
+    setText("feature-title", top.movie.title);
+    setText("feature-sub", blurb || top.movie.overview || "Fresh from the community's latest ratings.");
+    setTags(["Discover", yearOf(top.movie), `★ ${top.avg.toFixed(1)}`]);
+    setHeroPoster(top.movie, "COMMUNITY PICKS");
+    setText("feature-day", "LATEST");
+
+    setText("day-grid-heading", "Recently Reviewed");
+    setText("day-grid-status", `${items.length} FILMS`);
+    document.getElementById("day-grid").innerHTML = items
+        .map(
+            (it) => `
+            <div class="day-tile">
+                <div class="tile-art">
+                    <img src="${posterSrcFor(it.movie)}" alt="${escapeHtml(it.movie.title)}" loading="lazy">
+                    <div class="daynum">★${it.avg.toFixed(1)}</div>
+                </div>
+                <div class="tile-title">${escapeHtml(it.movie.title)}</div>
+            </div>`
+        )
+        .join("");
+    setGridVisible(true);
+    return true;
+}
+
+async function renderHome() {
+    const settings = await loadHomeSettings();
+    const opts = { headline: settings?.headline?.trim(), blurb: settings?.blurb?.trim() };
+
+    if (settings?.mode === "movie" && settings.featured_movie?.title) {
+        await renderMovieMode(settings.featured_movie, opts);
+        return;
+    }
+    if (settings?.mode === "discover" && (await renderDiscoverMode(opts))) {
+        return;
+    }
+    if (settings?.mode === "list" && Array.isArray(settings.movies) && settings.movies.length) {
+        renderListMode(settings.movies, { ...opts, listName: settings.list_name, countdown: settings.countdown });
+        return;
+    }
+
+    const list = (await loadFallbackList()) || window.CURRENT_LIST || [];
+    if (list.length) renderListMode(list, { listName: `The ${HOME_LIST_NAME.replace(/^31for31 /, "")} List`, countdown: true });
 }
 
 // --- Discover: live TMDB data, no fictional pool ---
@@ -181,12 +384,8 @@ async function submitNewsletter(e) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-    const list = (await loadHomeList()) || window.CURRENT_LIST || [];
-    if (list.length) {
-        renderFeature(list);
-        renderDayGrid(list);
-    }
-    loadPopularHorror();
     document.getElementById("random-pick-btn")?.addEventListener("click", randomPick);
     document.getElementById("newsletter-form")?.addEventListener("submit", submitNewsletter);
+    loadPopularHorror();
+    await renderHome();
 });

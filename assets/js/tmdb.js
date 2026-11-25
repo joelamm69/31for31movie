@@ -50,6 +50,6 @@ async function tmdbFetchMovies(ids) {
     return results.filter(Boolean);
 }
 
-function tmdbPosterUrl(posterPath) {
-    return posterPath ? `https://image.tmdb.org/t/p/w200${posterPath}` : null;
+function tmdbPosterUrl(posterPath, size = "w200") {
+    return posterPath ? `https://image.tmdb.org/t/p/${size}${posterPath}` : null;
 }

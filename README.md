@@ -25,6 +25,7 @@ login.html          Sign up / log in
 lists.html          My Lists — create lists, search TMDB, add movies,
                      mark watched, take notes, publish to Community
 community.html       Browse lists other users have published
+admin.html          Edit Home: choose what the home page shows (owner only)
 blog/                Blog index + posts/
 assets/css/          Shared theme
 assets/js/           Supabase client, auth, lists, community, TMDB helpers
@@ -46,6 +47,7 @@ paste → Run) to create the tables:
 - `supabase/user_libraries.sql` — a user's lists, watched movies, notes
 - `supabase/movie_ratings.sql` — community movie ratings
 - `supabase/movie_lists.sql` — published/shared lists (Community page)
+- `supabase/site_settings.sql` — what the home page shows, and who may change it
 
 The anon key in `config.js` is meant to be public — Supabase's security
 model relies on the Row Level Security policies in these SQL files, not on
@@ -82,6 +84,23 @@ genres }` — the same shape TMDB's API returns, which is also exactly what
 `Movie.swift` in the app decodes. `assets/js/lists.js` reads/writes this
 table with the identical JSON shape, so a list created on the web shows up
 in the app (and vice versa) the next time either syncs.
+
+## Changing the home page
+
+Signed in as the site owner, an **Edit Home** link appears in the nav
+(`admin.html`). It offers three modes:
+
+- **One of my lists** — the hero + poster grid from any of your lists, with
+  an optional October countdown. It stays in sync with that list as you edit
+  it on the web or in the app (a database trigger copies the changes).
+- **A single movie** — promote one movie (search your lists or TMDB); the
+  community's ratings for it show underneath.
+- **Discover** — the movies people rated most recently, updating by itself.
+
+Only accounts in the `site_admins` table can save; that's enforced by Row
+Level Security, not by hiding the page. To add another admin, run in the
+Supabase SQL editor:
+`insert into site_admins (user_id) values ('<their auth user id>');`
 
 ## Deploying (Hostinger web hosting + GitHub)
 
