@@ -26,6 +26,9 @@ import sys
 
 import markdown
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from stamp_assets import stamp_file  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SRC = ROOT / "blog" / "_posts"
 OUT = ROOT / "blog" / "posts"
@@ -143,6 +146,10 @@ def main():
 """ + "\n".join(items) + """
         </div>"""
     INDEX.write_text(page("Blog", body, "../"), encoding="utf-8")
+
+    # Version the CSS/JS links so a deploy never serves stale cached files.
+    for built in [INDEX, *OUT.glob("*.html")]:
+        stamp_file(built)
     print(f"Built {len(posts)} post(s).")
 
 

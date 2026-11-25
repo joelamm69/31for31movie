@@ -4,3 +4,4 @@
 assets/js/tmdb-config.js
 
 .DS_Store
+__pycache__/
