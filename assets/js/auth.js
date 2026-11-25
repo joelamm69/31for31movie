@@ -53,11 +53,14 @@ async function addAdminNavLink(user) {
     if (!(await isSiteAdmin())) return;
     const nav = document.querySelector(".site-nav");
     if (!nav || nav.querySelector('a[href="admin.html"]')) return;
-    const link = document.createElement("a");
-    link.href = "admin.html";
-    link.textContent = "Edit Home";
-    if ((location.pathname.split("/").pop() || "index.html") === "admin.html") link.classList.add("active");
-    nav.appendChild(link);
+    const here = location.pathname.split("/").pop() || "index.html";
+    [["admin.html", "Edit Home"], ["moderation.html", "Moderation"]].forEach(([href, label]) => {
+        const link = document.createElement("a");
+        link.href = href;
+        link.textContent = label;
+        if (here === href) link.classList.add("active");
+        nav.appendChild(link);
+    });
 }
 
 function renderNavAuth(user) {
@@ -66,7 +69,7 @@ function renderNavAuth(user) {
 
     if (user) {
         el.innerHTML = `
-            <span class="badge">${escapeHtml(displayNameFor(user))}</span>
+            <a class="badge" href="profile.html" title="Your profile">${escapeHtml(displayNameFor(user))}</a>
             <button class="btn btn-sm btn-ghost" id="nav-sign-out">Sign Out</button>
         `;
         document.getElementById("nav-sign-out")?.addEventListener("click", async () => {
@@ -76,7 +79,7 @@ function renderNavAuth(user) {
         addAdminNavLink(user);
     } else {
         navAdminChecked = null;
-        document.querySelector('.site-nav a[href="admin.html"]')?.remove();
+        document.querySelectorAll('.site-nav a[href="admin.html"], .site-nav a[href="moderation.html"]').forEach((a) => a.remove());
         el.innerHTML = `<a class="btn btn-sm btn-primary" href="login.html">Log In</a>`;
     }
 }

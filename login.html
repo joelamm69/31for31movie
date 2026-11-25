@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Log In — 31 for 31</title>
-    <link rel="stylesheet" href="assets/css/style.css?v=917893ca">
+    <script src="assets/js/season.js?v=1ffee31f"></script>
+    <link rel="stylesheet" href="assets/css/style.css?v=25cca6d0">
 </head>
 <body>
     <div class="vhs-overlay"></div>
@@ -13,6 +14,10 @@
         <nav class="site-nav">
             <a href="index.html">Home</a>
             <a href="lists.html">My Lists</a>
+            <a href="search.html">Search</a>
+            <a href="feed.html">Feed</a>
+            <a href="challenges.html">Challenges</a>
+            <a href="october.html">October Bin</a>
             <a href="community.html">Community</a>
             <a href="activity.html">Live Feed</a>
         </nav>
@@ -37,6 +42,10 @@
                     <label for="password">Password</label>
                     <input type="password" id="password" required autocomplete="current-password" minlength="6">
                 </div>
+                <label class="check-row" id="terms-field" hidden>
+                    <input type="checkbox" id="accept-terms">
+                    <span>I agree to the <a href="terms.html" target="_blank">Terms of Use</a> and <a href="privacy.html" target="_blank">Privacy Policy</a>.</span>
+                </label>
                 <button type="submit" class="btn btn-primary" id="submit-btn" style="width:100%">Log In</button>
             </form>
 
@@ -50,12 +59,13 @@
     <footer class="site-footer">
         <span>&copy; 2026 31 for 31. Made for horror fans.</span>
         <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="assets/js/config.js?v=c98755cc"></script>
     <script src="assets/js/supabase-client.js?v=ed11fa7d"></script>
-    <script src="assets/js/auth.js?v=e528772e"></script>
+    <script src="assets/js/auth.js?v=29ad93b4"></script>
     <script>
         let mode = "login"; // or "signup"
 
@@ -70,6 +80,7 @@
             document.getElementById("form-title").textContent = isSignup ? "Sign Up" : "Log In";
             document.getElementById("submit-btn").textContent = isSignup ? "Sign Up" : "Log In";
             document.getElementById("display-name-field").hidden = !isSignup;
+            document.getElementById("terms-field").hidden = !isSignup;
             document.getElementById("toggle-prompt").textContent = isSignup ? "Already have an account?" : "Don't have an account?";
             document.getElementById("toggle-mode").textContent = isSignup ? "Log In" : "Sign Up";
             document.getElementById("alert-box").innerHTML = "";
@@ -94,6 +105,10 @@
             const submitBtn = document.getElementById("submit-btn");
 
             alertBox.innerHTML = "";
+            if (mode === "signup" && !document.getElementById("accept-terms").checked) {
+                alertBox.innerHTML = `<div class="alert alert-error">Please agree to the Terms of Use to sign up.</div>`;
+                return;
+            }
             submitBtn.disabled = true;
 
             try {
@@ -101,7 +116,7 @@
                     const { data, error } = await window.sb.auth.signUp({
                         email,
                         password,
-                        options: { data: { display_name: displayName } },
+                        options: { data: { display_name: displayName, terms_accepted_at: new Date().toISOString() } },
                     });
                     if (error) throw error;
                     if (data.session) {

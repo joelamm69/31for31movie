@@ -44,6 +44,7 @@ def page(title, body, prefix):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{html.escape(title, quote=False)} — 31 for 31</title>
+    <script src="{prefix}assets/js/season.js"></script>
     <link rel="stylesheet" href="{prefix}assets/css/style.css">
 </head>
 <body>
@@ -53,6 +54,10 @@ def page(title, body, prefix):
         <nav class="site-nav">
             <a href="{prefix}index.html">Home</a>
             <a href="{prefix}lists.html">My Lists</a>
+            <a href="{prefix}search.html">Search</a>
+            <a href="{prefix}feed.html">Feed</a>
+            <a href="{prefix}challenges.html">Challenges</a>
+            <a href="{prefix}october.html">October Bin</a>
             <a href="{prefix}community.html">Community</a>
             <a href="{prefix}activity.html">Live Feed</a>
         </nav>
@@ -66,6 +71,7 @@ def page(title, body, prefix):
     <footer class="site-footer">
         <span>&copy; {datetime.date.today().year} 31 for 31. Made for horror fans.</span>
         <a href="{prefix}privacy.html">Privacy</a>
+        <a href="{prefix}terms.html">Terms</a>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
