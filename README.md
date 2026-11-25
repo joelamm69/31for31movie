@@ -121,7 +121,9 @@ TMDB movie and TV ids overlap, so titles are always `(media_type, tmdb_id)`.
 List items in `user_libraries.lists` may now carry `media_type: "tv"`; items
 without it are movies. TV never goes into `watched_movie_ids` or
 `movie_ratings` (both movie-only and shared with the app); a TV item's
-private list note is stored under `"tv:<id>"` in `movie_notes`.
+private list note goes in `tv_notes` (`movie_notes` must keep integer keys:
+the app decodes it as `[Int: String]`). TV items aren't included in a
+published list's `movie_ids`, which the app reads as movie ids.
 
 ## Moderation (App Store UGC)
 

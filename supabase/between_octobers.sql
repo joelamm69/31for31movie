@@ -56,6 +56,14 @@ create policy "Users can update their own profile"
     with check (auth.uid() = id);
 
 ------------------------------------------------------------------------------
+-- Private list notes for TV shows
+------------------------------------------------------------------------------
+-- movie_notes is decoded by the app as [Int: String], so TV notes can't share
+-- it (ids overlap, and a non-numeric key breaks decoding). Older app builds
+-- don't send this column, so their upserts leave it untouched.
+alter table user_libraries add column if not exists tv_notes jsonb not null default '{}'::jsonb;
+
+------------------------------------------------------------------------------
 -- Social graph
 ------------------------------------------------------------------------------
 create table if not exists follows (
@@ -376,9 +384,14 @@ as $$
         or exists (select 1 from public.challenges c where c.id = cid and private.can_view(c.owner_id, c.visibility));
 $$;
 
+-- Checks the row's own columns rather than going through
+-- can_view_challenge(id): that re-queries challenges, which can't see a row
+-- being inserted, so INSERT ... RETURNING (creating a challenge and reading
+-- it back) would be refused for its own owner.
 drop policy if exists "Challenges are visible per their visibility" on challenges;
 create policy "Challenges are visible per their visibility"
-    on challenges for select using (private.can_view_challenge(id));
+    on challenges for select
+    using (owner_id = auth.uid() or private.can_view(owner_id, visibility) or private.is_challenge_member(id));
 
 drop policy if exists "Users create their own challenges" on challenges;
 create policy "Users create their own challenges"

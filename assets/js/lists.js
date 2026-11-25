@@ -6,13 +6,16 @@
 // Lists can hold TV shows too (items with media_type: "tv"). TMDB movie and
 // TV ids overlap, so TV is kept out of watched_movie_ids and movie_ratings
 // (both movie-only, shared with the app): a show's watched state lives in
-// watch_entries, and its note is stored under "tv:<id>" in movie_notes.
+// watch_entries, and its private note in tv_notes (movie_notes must keep
+// integer keys: the app decodes it as [Int: String], and one non-numeric key
+// would make it reject the whole library). Community's movie_ids is also
+// movie-only, so TV items aren't published there.
 // Every watch is also logged to watch_entries, the diary that feeds notes,
 // the follow feed, challenges and recaps.
 
 let currentUserId = null;
 let currentUserName = null;
-let library = { lists: [], watchedMovieIds: new Set(), movieNotes: {} };
+let library = { lists: [], watchedMovieIds: new Set(), movieNotes: {}, tvNotes: {} };
 let openListId = null;
 let saveTimer = null;
 let movieRatings = new Map(); // movie_id -> 1-5, this user's own ratings from movie_ratings
@@ -22,7 +25,8 @@ let octoberKeys = new Set(); // "movie:603" / "tv:1399" in the October bin
 let horrorOnly = window.isMarathonMode();
 
 const isTv = (m) => m.media_type === "tv";
-const noteKey = (m) => (isTv(m) ? `tv:${m.id}` : m.id);
+const notesFor = (m) => (isTv(m) ? library.tvNotes : library.movieNotes);
+const publishedIds = (list) => list.movies.filter((m) => !isTv(m)).map((m) => m.id);
 const sameTitle = (a, b) => a.id === b.id && isTv(a) === isTv(b);
 
 function newList(name) {
@@ -44,6 +48,7 @@ async function loadLibrary() {
         library.lists = data.lists || [];
         library.watchedMovieIds = new Set(data.watched_movie_ids || []);
         library.movieNotes = data.movie_notes || {};
+        library.tvNotes = data.tv_notes || {};
     }
 
     if (library.lists.length === 0) {
@@ -79,6 +84,7 @@ async function saveLibrary() {
         lists: library.lists,
         watched_movie_ids: Array.from(library.watchedMovieIds),
         movie_notes: library.movieNotes,
+        tv_notes: library.tvNotes,
         updated_at: new Date().toISOString(),
     };
     const { error } = await window.sb.from("user_libraries").upsert(payload, { onConflict: "user_id" });
@@ -98,7 +104,7 @@ async function syncPublishedLists() {
     const results = await Promise.all(
         published.map((list) =>
             window.sb.from("movie_lists").upsert(
-                { user_id: currentUserId, list_id: list.id, list_name: list.name, movie_ids: list.movies.map((m) => m.id) },
+                { user_id: currentUserId, list_id: list.id, list_name: list.name, movie_ids: publishedIds(list) },
                 { onConflict: "user_id,list_id" }
             )
         )
@@ -244,8 +250,8 @@ async function logWatchActivity(movieId) {
     if (error) console.error("Failed to log watch activity", error);
 }
 
-function setNoteAction(key, note) {
-    library.movieNotes[key] = note;
+function setNoteAction(movie, note) {
+    notesFor(movie)[movie.id] = note;
     scheduleSave();
 }
 
@@ -280,7 +286,7 @@ async function publishListAction(listId) {
 
     const alreadyPublished = publishedListIds.has(listId);
     const { error } = await window.sb.from("movie_lists").upsert(
-        { user_id: currentUserId, list_id: listId, list_name: list.name, movie_ids: list.movies.map((m) => m.id) },
+        { user_id: currentUserId, list_id: listId, list_name: list.name, movie_ids: publishedIds(list) },
         { onConflict: "user_id,list_id" }
     );
 
@@ -312,7 +318,7 @@ function starsHtml(movieId) {
 function movieRowHtml(listId, movie) {
     const poster = tmdbPosterUrl(movie.poster_path);
     const watched = isWatched(movie);
-    const note = library.movieNotes[noteKey(movie)] || "";
+    const note = notesFor(movie)[movie.id] || "";
     const year = movie.release_date ? movie.release_date.slice(0, 4) : "N/A";
     const type = mediaTypeOf(movie);
     const saved = octoberKeys.has(watchKey(type, movie.id));
@@ -461,8 +467,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     container.addEventListener("input", (e) => {
         if (e.target.matches(".note-input")) {
-            const { movieId, mediaType } = e.target.dataset;
-            setNoteAction(mediaType === "tv" ? `tv:${movieId}` : Number(movieId), e.target.value);
+            const { listId, movieId, mediaType } = e.target.dataset;
+            const movie = findList(listId)?.movies.find((m) => m.id === Number(movieId) && mediaTypeOf(m) === mediaType);
+            if (movie) setNoteAction(movie, e.target.value);
         }
 
         if (e.target.matches(".movie-search-input")) {
