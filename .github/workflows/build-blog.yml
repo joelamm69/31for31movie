@@ -9,6 +9,7 @@ on:
       - "blog/_posts/**"
       - "scripts/build_blog.py"
       - ".github/workflows/build-blog.yml"
+      - "scripts/stamp_assets.py"
   workflow_dispatch:
 
 permissions:

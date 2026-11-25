@@ -112,6 +112,16 @@ Every push to `main` goes live on its own; there is no server to manage.
 created once in hPanel's File Manager under `public_html/assets/js/`. Git
 deploys leave it alone. If the site is ever re-created, add it again.
 
+### Cached files after a deploy
+
+Every local CSS/JS link carries a fingerprint, e.g. `auth.js?v=3f9a12c0`,
+that changes only when that file changes, so browsers and Hostinger's CDN
+fetch new files after a deploy. The "Stamp asset versions" GitHub Action
+(`scripts/stamp_assets.py`) updates these automatically on every push to
+`main`; to do it by hand, run `python3 scripts/stamp_assets.py`. The HTML
+pages themselves can still be cached by the CDN: if a change doesn't show
+up, flush the cache in hPanel (Performance → CDN).
+
 ## Adding a blog post
 
 Posts are Markdown files in `blog/_posts/`. You never edit the HTML by hand.
