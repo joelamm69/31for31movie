@@ -2,14 +2,32 @@
 // movies, toggle watched, edit notes — all persisted to the same
 // `user_libraries` row (lists/watched_movie_ids/movie_notes as jsonb) that
 // the iPad app reads and writes, so data stays in sync across both.
+//
+// Lists can hold TV shows too (items with media_type: "tv"). TMDB movie and
+// TV ids overlap, so TV is kept out of watched_movie_ids and movie_ratings
+// (both movie-only, shared with the app): a show's watched state lives in
+// watch_entries, and its private note in tv_notes (movie_notes must keep
+// integer keys: the app decodes it as [Int: String], and one non-numeric key
+// would make it reject the whole library). Community's movie_ids is also
+// movie-only, so TV items aren't published there.
+// Every watch is also logged to watch_entries, the diary that feeds notes,
+// the follow feed, challenges and recaps.
 
 let currentUserId = null;
 let currentUserName = null;
-let library = { lists: [], watchedMovieIds: new Set(), movieNotes: {} };
+let library = { lists: [], watchedMovieIds: new Set(), movieNotes: {}, tvNotes: {} };
 let openListId = null;
 let saveTimer = null;
 let movieRatings = new Map(); // movie_id -> 1-5, this user's own ratings from movie_ratings
 let publishedListIds = new Set(); // list.id values currently published to movie_lists
+let watchedTvIds = new Set(); // TV shows marked watched (from watch_entries)
+let octoberKeys = new Set(); // "movie:603" / "tv:1399" in the October bin
+let horrorOnly = window.isMarathonMode();
+
+const isTv = (m) => m.media_type === "tv";
+const notesFor = (m) => (isTv(m) ? library.tvNotes : library.movieNotes);
+const publishedIds = (list) => list.movies.filter((m) => !isTv(m)).map((m) => m.id);
+const sameTitle = (a, b) => a.id === b.id && isTv(a) === isTv(b);
 
 function newList(name) {
     return { id: crypto.randomUUID(), name, movies: [] };
@@ -30,6 +48,7 @@ async function loadLibrary() {
         library.lists = data.lists || [];
         library.watchedMovieIds = new Set(data.watched_movie_ids || []);
         library.movieNotes = data.movie_notes || {};
+        library.tvNotes = data.tv_notes || {};
     }
 
     if (library.lists.length === 0) {
@@ -65,6 +84,7 @@ async function saveLibrary() {
         lists: library.lists,
         watched_movie_ids: Array.from(library.watchedMovieIds),
         movie_notes: library.movieNotes,
+        tv_notes: library.tvNotes,
         updated_at: new Date().toISOString(),
     };
     const { error } = await window.sb.from("user_libraries").upsert(payload, { onConflict: "user_id" });
@@ -84,7 +104,7 @@ async function syncPublishedLists() {
     const results = await Promise.all(
         published.map((list) =>
             window.sb.from("movie_lists").upsert(
-                { user_id: currentUserId, list_id: list.id, list_name: list.name, movie_ids: list.movies.map((m) => m.id) },
+                { user_id: currentUserId, list_id: list.id, list_name: list.name, movie_ids: publishedIds(list) },
                 { onConflict: "user_id,list_id" }
             )
         )
@@ -144,30 +164,78 @@ function deleteListAction(listId) {
 function addMovieAction(listId, movie) {
     const list = findList(listId);
     if (!list) return;
-    if (list.movies.length >= 31) return alert("This list already has 31 movies — the max for a 31-for-31 list.");
-    if (list.movies.some((m) => m.id === movie.id)) return;
+    if (list.movies.length >= 31) return alert("This list already has 31 titles — the max for a 31-for-31 list.");
+    if (list.movies.some((m) => sameTitle(m, movie))) return;
     list.movies.push(movie);
     saveLibrary();
     render();
 }
 
-function removeMovieAction(listId, movieId) {
+function removeMovieAction(listId, movieId, mediaType = "movie") {
     const list = findList(listId);
     if (!list) return;
-    list.movies = list.movies.filter((m) => m.id !== movieId);
+    list.movies = list.movies.filter((m) => !(m.id === movieId && mediaTypeOf(m) === mediaType));
     saveLibrary();
     render();
 }
 
-function toggleWatchedAction(movieId) {
-    if (library.watchedMovieIds.has(movieId)) {
-        library.watchedMovieIds.delete(movieId);
+function isWatched(m) {
+    return isTv(m) ? watchedTvIds.has(m.id) : library.watchedMovieIds.has(m.id);
+}
+
+function toggleWatchedAction(movie) {
+    const wasWatched = isWatched(movie);
+    if (isTv(movie)) {
+        if (wasWatched) watchedTvIds.delete(movie.id);
+        else watchedTvIds.add(movie.id);
+    } else if (wasWatched) {
+        library.watchedMovieIds.delete(movie.id);
     } else {
-        library.watchedMovieIds.add(movieId);
-        logWatchActivity(movieId);
+        library.watchedMovieIds.add(movie.id);
+        logWatchActivity(movie.id);
     }
-    saveLibrary();
+    if (wasWatched) unlogBareWatch(movie);
+    else logWatchEntry({ media_type: mediaTypeOf(movie), tmdb_id: movie.id, title: movie.title, poster_path: movie.poster_path })
+        .catch((err) => console.error("Failed to log diary entry", err));
+    if (!isTv(movie)) saveLibrary();
     render();
+}
+
+// Un-marking removes today's (or the latest) plain "watched" diary entry,
+// never one with a note, review or rating on it.
+async function unlogBareWatch(movie) {
+    const { data } = await window.sb
+        .from("watch_entries")
+        .select("id")
+        .eq("user_id", currentUserId)
+        .eq("media_type", mediaTypeOf(movie))
+        .eq("tmdb_id", movie.id)
+        .is("note", null).is("review", null).is("rating", null).is("season", null)
+        .order("created_at", { ascending: false })
+        .limit(1);
+    if (data?.[0]) await window.sb.from("watch_entries").delete().eq("id", data[0].id);
+}
+
+async function loadWatchedTv() {
+    const { data, error } = await window.sb.from("watch_entries").select("tmdb_id").eq("user_id", currentUserId).eq("media_type", "tv").is("season", null);
+    if (error) return console.error("Failed to load TV watches", error);
+    watchedTvIds = new Set((data || []).map((r) => r.tmdb_id));
+}
+
+async function toggleOctoberAction(movie) {
+    const key = watchKey(mediaTypeOf(movie), movie.id);
+    try {
+        if (octoberKeys.has(key)) {
+            await removeFromOctober(mediaTypeOf(movie), movie.id);
+            octoberKeys.delete(key);
+        } else {
+            await saveForOctober(movie);
+            octoberKeys.add(key);
+        }
+        render();
+    } catch (err) {
+        alert(`Couldn't update your October bin: ${err.message}`);
+    }
 }
 
 // Fire-and-forget: logs a public "watched" event for the live activity
@@ -182,8 +250,8 @@ async function logWatchActivity(movieId) {
     if (error) console.error("Failed to log watch activity", error);
 }
 
-function setNoteAction(movieId, note) {
-    library.movieNotes[movieId] = note;
+function setNoteAction(movie, note) {
+    notesFor(movie)[movie.id] = note;
     scheduleSave();
 }
 
@@ -218,7 +286,7 @@ async function publishListAction(listId) {
 
     const alreadyPublished = publishedListIds.has(listId);
     const { error } = await window.sb.from("movie_lists").upsert(
-        { user_id: currentUserId, list_id: listId, list_name: list.name, movie_ids: list.movies.map((m) => m.id) },
+        { user_id: currentUserId, list_id: listId, list_name: list.name, movie_ids: publishedIds(list) },
         { onConflict: "user_id,list_id" }
     );
 
@@ -249,22 +317,27 @@ function starsHtml(movieId) {
 
 function movieRowHtml(listId, movie) {
     const poster = tmdbPosterUrl(movie.poster_path);
-    const watched = library.watchedMovieIds.has(movie.id);
-    const note = library.movieNotes[movie.id] || "";
+    const watched = isWatched(movie);
+    const note = notesFor(movie)[movie.id] || "";
     const year = movie.release_date ? movie.release_date.slice(0, 4) : "N/A";
+    const type = mediaTypeOf(movie);
+    const saved = octoberKeys.has(watchKey(type, movie.id));
+    const ids = `data-list-id="${listId}" data-movie-id="${movie.id}" data-media-type="${type}"`;
     return `
-        <div class="movie-row" data-movie-id="${movie.id}">
+        <div class="movie-row" data-movie-id="${movie.id}" data-media-type="${type}">
             ${poster ? `<img src="${poster}" alt="">` : `<div style="width:46px;height:69px;border-radius:0;background:var(--bg-raised);flex-shrink:0"></div>`}
             <div class="movie-meta">
-                <div class="title">${escapeHtml(movie.title)}</div>
-                <div class="year">${year}${watched ? " · Watched" : ""}</div>
-                ${starsHtml(movie.id)}
-                <input type="text" class="note-input" data-action="note" data-list-id="${listId}" data-movie-id="${movie.id}"
-                    placeholder="Notes..." value="${escapeHtml(note)}" style="margin-top:4px;width:100%;font-size:0.8rem;padding:0.3rem 0.5rem;">
+                <div class="title"><a href="${titleUrl(movie)}">${escapeHtml(movie.title)}</a></div>
+                <div class="year">${isTv(movie) ? "TV · " : ""}${year}${watched ? " · Watched" : ""}</div>
+                ${isTv(movie) ? "" : starsHtml(movie.id)}
+                <input type="text" class="note-input" data-action="note" ${ids}
+                    placeholder="Private notes..." value="${escapeHtml(note)}" style="margin-top:4px;width:100%;font-size:0.8rem;padding:0.3rem 0.5rem;">
             </div>
             <div class="movie-actions">
-                <button class="btn btn-sm ${watched ? "btn-primary" : "btn-ghost"}" data-action="watched" data-movie-id="${movie.id}">${watched ? "✓ Watched" : "Mark Watched"}</button>
-                <button class="btn btn-sm btn-danger" data-action="remove-movie" data-list-id="${listId}" data-movie-id="${movie.id}">Remove</button>
+                <button class="btn btn-sm ${watched ? "btn-primary" : "btn-ghost"}" data-action="watched" ${ids}>${watched ? "✓ Watched" : "Mark Watched"}</button>
+                <a class="btn btn-sm btn-ghost" href="${titleUrl(movie)}">Note / Review</a>
+                <button class="btn btn-sm ${saved ? "btn-cream" : "btn-ghost"}" data-action="october" ${ids} title="Save for October">${saved ? "✓ Oct" : "🎃"}</button>
+                <button class="btn btn-sm btn-danger" data-action="remove-movie" ${ids}>Remove</button>
             </div>
         </div>
     `;
@@ -297,8 +370,9 @@ function listDetailHtml(list) {
     return `
         <div class="list-detail" style="margin-top:0.9rem;border-top:1px solid var(--border);padding-top:0.9rem">
             <div class="field">
-                <label>Search TMDB to add a horror movie</label>
+                <label>Search TMDB to add a movie or show</label>
                 <input type="search" class="movie-search-input" data-list-id="${list.id}" placeholder="e.g. Hereditary" ${tmdbConfigured() ? "" : "disabled"}>
+                <label class="check-row"><input type="checkbox" class="horror-only-toggle" ${horrorOnly ? "checked" : ""}><span>Horror only</span></label>
                 ${tmdbNote}
                 <div class="search-results" data-list-id="${list.id}"></div>
             </div>
@@ -331,7 +405,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentUserId = user.id;
     currentUserName = publicNameFor(user);
 
-    await Promise.all([loadLibrary(), loadRatings(), loadPublishedLists()]);
+    await initSocial();
+    const [, , , , binKeys] = await Promise.all([loadLibrary(), loadRatings(), loadPublishedLists(), loadWatchedTv(), loadOctoberBinKeys()]);
+    octoberKeys = binKeys;
     render();
 
     document.getElementById("new-list-btn")?.addEventListener("click", () => {
@@ -350,7 +426,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const btn = e.target.closest("button[data-action]");
         if (btn) {
-            const { action, listId, movieId } = btn.dataset;
+            const { action, listId, movieId, mediaType } = btn.dataset;
+            const movie = findList(listId)?.movies.find((m) => m.id === Number(movieId) && mediaTypeOf(m) === mediaType);
             if (action === "toggle") {
                 openListId = openListId === listId ? null : listId;
                 render();
@@ -365,9 +442,11 @@ document.addEventListener("DOMContentLoaded", async () => {
                 await publishListAction(listId);
                 btn.disabled = false;
             } else if (action === "remove-movie") {
-                removeMovieAction(listId, Number(movieId));
-            } else if (action === "watched") {
-                toggleWatchedAction(Number(movieId));
+                removeMovieAction(listId, Number(movieId), mediaType);
+            } else if (action === "watched" && movie) {
+                toggleWatchedAction(movie);
+            } else if (action === "october" && movie) {
+                toggleOctoberAction(movie);
             }
             return;
         }
@@ -379,10 +458,18 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     });
 
+    container.addEventListener("change", (e) => {
+        if (!e.target.matches(".horror-only-toggle")) return;
+        horrorOnly = e.target.checked;
+        const input = e.target.closest(".field").querySelector(".movie-search-input");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
     container.addEventListener("input", (e) => {
         if (e.target.matches(".note-input")) {
-            const { listId, movieId } = e.target.dataset;
-            setNoteAction(Number(movieId), e.target.value);
+            const { listId, movieId, mediaType } = e.target.dataset;
+            const movie = findList(listId)?.movies.find((m) => m.id === Number(movieId) && mediaTypeOf(m) === mediaType);
+            if (movie) setNoteAction(movie, e.target.value);
         }
 
         if (e.target.matches(".movie-search-input")) {
@@ -400,7 +487,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 resultsEl.innerHTML = `<p style="font-size:0.82rem">Searching...</p>`;
                 let movies;
                 try {
-                    movies = await tmdbSearchHorrorMovies(query);
+                    movies = await tmdbSearchTitles(query, { horrorOnly, includeTv: true });
                 } catch (err) {
                     resultsEl.innerHTML = `<div class="alert alert-error" style="margin:0">TMDB search failed: ${escapeHtml(err.message)}. Double check assets/js/tmdb-config.js has a valid TMDB API key (v3 auth), not the Read Access Token.</div>`;
                     return;
@@ -415,7 +502,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                                     ${poster ? `<img src="${poster}" alt="">` : `<div style="width:46px;height:69px;border-radius:0;background:var(--bg-raised);flex-shrink:0"></div>`}
                                     <div class="movie-meta">
                                         <div class="title">${escapeHtml(m.title)}</div>
-                                        <div class="year">${m.release_date ? m.release_date.slice(0, 4) : "N/A"}</div>
+                                        <div class="year">${m.media_type === "tv" ? "TV · " : ""}${m.release_date ? m.release_date.slice(0, 4) : "N/A"}</div>
                                     </div>
                                     <div class="movie-actions"><span class="btn btn-sm btn-primary">+ Add</span></div>
                                 </div>
